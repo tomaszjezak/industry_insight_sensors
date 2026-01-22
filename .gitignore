@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Models (too large for git)
+models/
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+
+# Data
+data/rgb_images/*.jpg
+data/rgb_images/*.jpeg
+data/rgb_images/*.png
+data/rgb_images/*.webp
+data/rgb_images/*.avif
+data/results/
+!data/rgb_images/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/
+
+# Cache
+.cache/
+*.cache
+__pycache__/
+
+# Logs
+*.log
+
+# Test outputs
+test_*.jpg
+*_test.jpg
