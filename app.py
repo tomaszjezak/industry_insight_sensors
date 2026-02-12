@@ -36,10 +36,24 @@ st.markdown("""
     
     .header {
         background: linear-gradient(135deg, #228B22 0%, #32CD32 100%);
-        color: white;
+        color: white !important;
         padding: 20px 30px;
         margin: -1rem -1rem 2rem -1rem;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .header h1 {
+        color: white !important;
+    }
+    
+    /* Ensure all text in main content is dark */
+    .main .block-container {
+        color: #333333 !important;
+    }
+    
+    /* Streamlit default text should be dark */
+    p, div, span, label {
+        color: #333333 !important;
     }
     
     .metric-card {
@@ -104,14 +118,19 @@ def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None) -> np.ndarr
                         if M['m00'] > 0:
                             cx = int(M['m10'] / M['m00'])
                             cy = int(M['m01'] / M['m00'])
-                            # Label with area - white background for visibility
+                            # Label with area - white background with dark text for visibility
                             area_m2 = area * 0.01  # Rough estimate (would need proper scaling)
                             label_text = f"Pile: {area_m2:.0f}m²"
-                            (text_width, text_height), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
-                            # White background
-                            cv2.rectangle(overlay, (cx - 60, cy - 15), (cx + text_width - 50, cy + 5), (255, 255, 255), -1)
-                            cv2.putText(overlay, label_text, (cx - 50, cy),
-                                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 100, 0), 2)  # Dark green text
+                            (text_width, text_height), baseline = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+                            # White background box
+                            padding = 5
+                            cv2.rectangle(overlay, 
+                                         (cx - text_width//2 - padding, cy - text_height - baseline - padding),
+                                         (cx + text_width//2 + padding, cy + baseline + padding),
+                                         (255, 255, 255), -1)
+                            # Dark text (black or dark green)
+                            cv2.putText(overlay, label_text, (cx - text_width//2, cy),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)  # Black text on white
     
     # Also check _visualizations for segmentation mask
     elif analysis_result and '_visualizations' in analysis_result:
