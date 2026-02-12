@@ -26,42 +26,36 @@ from src.timeseries_db import TimeseriesDB
 from src.pipeline import DebrisAnalysisPipeline
 
 
-# AI Monitoring Style CSS
+# Clean Professional CSS - White Theme
 st.markdown("""
 <style>
     .stApp {
-        background: #1a1a1a !important;
+        background: #ffffff !important;
         font-family: 'Segoe UI', -apple-system, sans-serif;
     }
     
     .header {
-        background: linear-gradient(135deg, #228B22 0%, #1a5f1a 100%);
+        background: linear-gradient(135deg, #228B22 0%, #32CD32 100%);
         color: white;
         padding: 20px 30px;
         margin: -1rem -1rem 2rem -1rem;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
     
-    .alert-box {
-        background: #FF0000;
-        color: white;
-        padding: 15px 20px;
+    .metric-card {
+        background: white;
+        border: 2px solid #e0e0e0;
         border-radius: 8px;
-        margin: 15px 0;
-        box-shadow: 0 4px 8px rgba(255,0,0,0.3);
-        border-left: 5px solid #FFD700;
-        font-weight: 600;
+        padding: 15px;
+        margin-bottom: 10px;
     }
     
-    .metric-overlay {
-        background: rgba(34, 139, 34, 0.9);
-        color: white;
-        padding: 10px 15px;
-        border-radius: 6px;
-        display: inline-block;
-        margin: 5px;
-        font-weight: 600;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    .metric-label {
+        font-size: 0.75em;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 5px;
     }
     
     #MainMenu {visibility: hidden;}
@@ -78,65 +72,65 @@ def numpy_to_streamlit(img: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
-def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None, alerts: list = None) -> np.ndarray:
+def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None) -> np.ndarray:
     """
-    Draw AI monitoring overlays on image - bounding boxes, alerts, metrics.
-    Inspired by industrial AI monitoring systems.
+    Draw AI monitoring overlays on image - segmentation outlines, bounding boxes, metrics.
     """
     overlay = image.copy()
     h, w = overlay.shape[:2]
     
-    # Draw containers with bounding boxes (green)
+    # Draw segmentation outlines (green contours for detected debris piles)
+    if analysis_result and '_visualizations' in analysis_result:
+        seg_vis = analysis_result['_visualizations'].get('segmentation')
+        if seg_vis is not None:
+            # Extract contours from segmentation visualization
+            seg_gray = cv2.cvtColor(seg_vis, cv2.COLOR_BGR2GRAY)
+            contours, _ = cv2.findContours(seg_gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # Draw green outlines
+            cv2.drawContours(overlay, contours, -1, (0, 255, 0), 3)
+    
+    # Also try to get segmentation mask directly if available
+    if analysis_result and 'segmentation' in analysis_result:
+        seg_result = analysis_result['segmentation']
+        if 'mask' in seg_result:
+            mask = seg_result['mask']
+            if isinstance(mask, np.ndarray):
+                contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                cv2.drawContours(overlay, contours, -1, (0, 255, 0), 3)
+    
+    # Draw containers with bounding boxes (blue)
     if analysis_result and 'containers' in analysis_result:
         for container in analysis_result.get('containers', []):
             if 'bbox' in container:
                 bbox = np.array(container['bbox'], dtype=np.int32)
-                # Draw green bounding box
-                cv2.drawContours(overlay, [bbox], -1, (0, 255, 0), 3)
+                # Draw blue bounding box
+                cv2.drawContours(overlay, [bbox], -1, (255, 165, 0), 3)
                 
                 # Add label
                 cx, cy = container.get('centroid', (0, 0))
                 label = f"Container: {container.get('type', 'unknown')}"
                 cv2.putText(overlay, label, (cx - 80, cy - 10),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 165, 0), 2)
     
-    # Draw alert boxes (red warning boxes)
-    if alerts:
-        y_offset = 50
-        for alert in alerts:
-            # Draw red alert box
-            box_height = 60
-            box_width = 400
-            cv2.rectangle(overlay, (20, y_offset), (20 + box_width, y_offset + box_height),
-                         (0, 0, 255), -1)
-            cv2.rectangle(overlay, (20, y_offset), (20 + box_width, y_offset + box_height),
-                         (255, 215, 0), 3)
-            
-            # Alert text
-            cv2.putText(overlay, "!", (35, y_offset + 45),
-                       cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
-            cv2.putText(overlay, alert, (70, y_offset + 40),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-            
-            y_offset += box_height + 10
-    
-    # Draw metrics overlay (green boxes in corner)
+    # Draw metrics overlay (green boxes in corner with clear labels)
     if analysis_result:
         metrics = []
         if 'volume' in analysis_result:
             vol = analysis_result['volume'].get('volume_m3', 0)
-            metrics.append(f"VOLUME: {vol:.0f} m³")
+            metrics.append(("Debris Volume", f"{vol:.0f} m³"))
         if 'volume' in analysis_result:
             tons = analysis_result['volume'].get('tonnage_estimate', 0)
-            metrics.append(f"TONNAGE: {tons:.1f} tons")
+            metrics.append(("Material Tonnage", f"{tons:.1f} tons"))
         
-        y_pos = h - 100
-        for metric in metrics:
-            (text_width, text_height), _ = cv2.getTextSize(metric, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+        y_pos = h - 80
+        for label, value in metrics:
+            text = f"{label}: {value}"
+            (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+            # Green background box
             cv2.rectangle(overlay, (w - text_width - 30, y_pos - 25),
                          (w - 10, y_pos + 5), (34, 139, 34), -1)
-            cv2.putText(overlay, metric, (w - text_width - 20, y_pos),
-                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(overlay, text, (w - text_width - 20, y_pos),
+                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
             y_pos -= 35
     
     return overlay
@@ -216,23 +210,6 @@ def main():
             latest_img = img
             break
     
-    # Collect alerts
-    alerts = []
-    if latest_img and latest_img.get('materials_json'):
-        materials = json.loads(latest_img['materials_json'])
-        contamination = materials.get('mixed', 0)
-        if contamination > 20:
-            alerts.append(f"HIGH CONTAMINATION: {contamination:.1f}%")
-        
-        purity = calculate_purity_score(materials)
-        if purity < 70:
-            alerts.append(f"LOW PURITY SCORE: {purity:.0f}%")
-    
-    # Show alerts
-    if alerts:
-        for alert in alerts:
-            st.markdown(f'<div class="alert-box">⚠️ {alert}</div>', unsafe_allow_html=True)
-    
     # Main Image with AI Overlays
     st.markdown("### 🎯 Live Site Monitoring")
     
@@ -264,8 +241,8 @@ def main():
                         'containers': [],  # Would need to query containers table
                     }
             
-            # Draw AI overlays
-            overlay_image = draw_ai_overlay(image, analysis_result, alerts)
+            # Draw AI overlays (segmentation outlines, containers, metrics)
+            overlay_image = draw_ai_overlay(image, analysis_result)
             
             col_img1, col_img2 = st.columns([2, 1])
             
@@ -275,14 +252,14 @@ def main():
             with col_img2:
                 st.markdown("#### 📊 Real-Time Metrics")
                 
-                st.metric("Containers", latest.get('containers', 0))
-                st.metric("Tonnage", f"{latest.get('tonnage', 0):.1f} tons")
-                st.metric("Volume", f"{latest.get('volume_m3', 0):.0f} m³")
+                st.metric("Containers Detected", latest.get('containers', 0))
+                st.metric("Material Tonnage", f"{latest.get('tonnage', 0):.1f} tons")
+                st.metric("Debris Volume", f"{latest.get('volume_m3', 0):.0f} m³")
                 
                 if latest_img and latest_img.get('materials_json'):
                     materials = json.loads(latest_img['materials_json'])
                     purity = calculate_purity_score(materials)
-                    st.metric("Purity", f"{purity:.0f}%")
+                    st.metric("Material Purity", f"{purity:.0f}%")
     
     # Material Quality Section
     st.markdown("---")
@@ -300,13 +277,14 @@ def main():
         
         with col_m2:
             purity = calculate_purity_score(materials)
-            contamination = materials.get('mixed', 0)
             
-            st.metric("Purity Score", f"{purity:.0f}%")
-            if contamination > 20:
-                st.error(f"⚠️ High contamination: {contamination:.1f}%")
+            st.metric("Material Purity", f"{purity:.0f}%")
+            if purity >= 85:
+                st.success("✓ High purity - well sorted")
+            elif purity >= 70:
+                st.info("Moderate purity")
             else:
-                st.success(f"✓ Clean: {contamination:.1f}% mixed")
+                st.warning("⚠️ Low purity - needs sorting")
     
     # Operational Metrics
     st.markdown("---")
@@ -347,10 +325,10 @@ def main():
         col_t1, col_t2, col_t3 = st.columns(3)
         with col_t1:
             current = timeline['values'][-1]
-            st.metric("Current Volume", f"{current:.0f} m³")
+            st.metric("Current Debris Volume", f"{current:.0f} m³")
         with col_t2:
             recent_trend = timeline['values'][-1] - timeline['values'][-2]
-            st.metric("Recent Change", f"{recent_trend:.0f} m³", delta=recent_trend if abs(recent_trend) > 100 else None)
+            st.metric("Volume Change", f"{recent_trend:.0f} m³", delta=recent_trend if abs(recent_trend) > 100 else None)
         with col_t3:
             if len(timeline['values']) >= 2:
                 first_vol = timeline['values'][0]
@@ -373,12 +351,12 @@ def main():
         
         fig.update_layout(
             height=400,
-            paper_bgcolor='#1a1a1a',
-            plot_bgcolor='#2a2a2a',
-            font=dict(color='white'),
+            paper_bgcolor='white',
+            plot_bgcolor='#f8f9fa',
+            font=dict(color='#333'),
             showlegend=False,
-            xaxis=dict(gridcolor='#444'),
-            yaxis=dict(gridcolor='#444', title='Volume (m³)'),
+            xaxis=dict(gridcolor='#e0e0e0', title='Date'),
+            yaxis=dict(gridcolor='#e0e0e0', title='Debris Volume (m³)'),
         )
         
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
