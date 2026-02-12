@@ -25,6 +25,11 @@ data/rgb_images/*.avif
 data/results/
 !data/rgb_images/.gitkeep
 
+# Timelapse data (keep folder structure, exclude images)
+data/edco_timelapse/*.png
+data/timeseries/
+!data/edco_timelapse/.gitkeep
+
 # IDE
 .vscode/
 .idea/
