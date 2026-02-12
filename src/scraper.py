@@ -133,17 +133,22 @@ def flatten_images(output_dir: Path = None) -> list[Path]:
 
 
 def list_available_images(data_dir: Path = None) -> list[Path]:
-    """List all available images in the data directory."""
+    """List all available images in the data directory, including timelapse."""
     data_dir = data_dir or DATA_DIR
-    
-    if not data_dir.exists():
-        return []
+    project_root = Path(__file__).parent.parent
+    timelapse_dir = project_root / "data" / "edco_timelapse"
     
     images = []
-    for pattern in ["*.jpg", "*.jpeg", "*.png", "*.webp"]:
-        images.extend(data_dir.glob(pattern))
-        # Also check subdirectories
-        images.extend(data_dir.glob(f"**/{pattern}"))
+    
+    # Regular images
+    if data_dir.exists():
+        for pattern in ["*.jpg", "*.jpeg", "*.png", "*.webp"]:
+            images.extend(data_dir.glob(pattern))
+    
+    # Timelapse images
+    if timelapse_dir.exists():
+        for pattern in ["*.jpg", "*.jpeg", "*.png", "*.webp"]:
+            images.extend(timelapse_dir.glob(pattern))
     
     return sorted(images)
 
