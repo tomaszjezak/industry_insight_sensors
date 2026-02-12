@@ -140,26 +140,24 @@ def main():
             
             st.markdown("**Dates ↑**")
             
-            # Use two separate date inputs for range
-            col_d1, col_d2 = st.columns(2)
-            with col_d1:
-                selected_start = st.date_input(
-                    "From",
-                    value=start_date,
-                    min_value=start_date,
-                    max_value=end_date,
-                    key="date_start",
-                    label_visibility="collapsed",
-                )
-            with col_d2:
-                selected_end = st.date_input(
-                    "To",
-                    value=end_date,
-                    min_value=selected_start,
-                    max_value=end_date,
-                    key="date_end",
-                    label_visibility="collapsed",
-                )
+            # Date range selector - use Streamlit's built-in range support
+            date_range = st.date_input(
+                "Select date range",
+                value=(start_date, end_date),
+                min_value=start_date,
+                max_value=end_date,
+                key="date_range_selector",
+            )
+            
+            # Handle date range (can be tuple or single date)
+            if isinstance(date_range, tuple) and len(date_range) == 2:
+                selected_start, selected_end = date_range
+            elif isinstance(date_range, date):
+                selected_start = date_range
+                selected_end = date_range
+            else:
+                selected_start = start_date
+                selected_end = end_date
         else:
             selected_start = date(2015, 1, 1)
             selected_end = date.today()
