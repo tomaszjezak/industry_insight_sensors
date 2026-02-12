@@ -271,19 +271,19 @@ def main():
     
     # Get analysis result for latest image
     db = TimeseriesDB()
-    images = db.get_all_images()
+    db_images = db.get_all_images()  # Renamed to avoid conflict
     latest_img = None
-    for img in images:
-        if img['date'].startswith(selected_end.isoformat()[:10]):
-            latest_img = img
+    for db_img in db_images:
+        if db_img['date'].startswith(selected_end.isoformat()[:10]):
+            latest_img = db_img
             break
     
     # Main Image with AI Overlays
     st.markdown("### 🎯 Live Site Monitoring")
     
-    images = find_timelapse_images()
+    timelapse_images = find_timelapse_images()  # Renamed to avoid conflict
     images_in_range = [
-        (img_path, dt) for img_path, dt in images
+        (img_path, dt) for img_path, dt in timelapse_images
         if selected_start <= dt.date() <= selected_end
     ]
     
@@ -331,15 +331,17 @@ def main():
             selected_idx = 0
         
         img_path, img_date = images_in_range[selected_idx]
+        
+        # Load original full-resolution image directly from file
         image = cv2.imread(str(img_path))
         
         if image is not None:
             # Get analysis for this specific image
             img_date_str = img_date.date().isoformat()
             db_img = None
-            for img in images:
-                if img['date'].startswith(img_date_str):
-                    db_img = img
+            for db_img_row in db_images:  # Use renamed variable
+                if db_img_row['date'].startswith(img_date_str):
+                    db_img = db_img_row
                     break
             
             # Use cached results from database - NO SLOW MODEL LOADING!
@@ -378,18 +380,31 @@ def main():
             
             with col_img1:
                 date_str = img_date.strftime('%B %Y')
-                # Display full resolution image - Streamlit will handle scaling
+                # Display AI-enhanced image
                 st.image(numpy_to_streamlit(overlay_image), 
                         caption=f"AI-Enhanced View - {date_str}", 
                         use_container_width=True)
+                
+                # Also show original full-resolution image in expander
+                # This uses the file path directly, so fullscreen will be full resolution
+                with st.expander("🔍 View Original Full Resolution (Click to Fullscreen)"):
+                    # Use file path directly - Streamlit will load original for fullscreen
+                    st.image(str(img_path),
+                            caption=f"Original - {date_str}",
+                            use_container_width=False)  # Don't constrain for full res
             
             with col_img2:
                 st.markdown("#### 📊 Real-Time Metrics")
                 
                 if db_img:
-                    st.metric("Containers Detected", len(container_list) if 'container_list' in locals() else 0)
-                    st.metric("Material Tonnage", f"{db_img.get('tonnage_estimate', 0):.1f} tons")
-                    st.metric("Debris Volume", f"{db_img.get('volume_m3', 0):.0f} m³")
+                    container_count = len(container_list) if 'container_list' in locals() else 0
+                    st.metric("Containers Detected", container_count)
+                    
+                    tonnage = db_img.get('tonnage_estimate', 0) or 0
+                    st.metric("Material Tonnage", f"{tonnage:.1f} tons")
+                    
+                    volume = db_img.get('volume_m3', 0) or 0
+                    st.metric("Debris Volume", f"{volume:.0f} m³")
                     
                     if db_img.get('materials_json'):
                         materials = json.loads(db_img['materials_json'])
@@ -465,13 +480,17 @@ def main():
             st.metric("Current Debris Volume", f"{current:.0f} m³")
         with col_t2:
             recent_trend = timeline['values'][-1] - timeline['values'][-2]
-            st.metric("Volume Change", f"{recent_trend:.0f} m³", delta=recent_trend if abs(recent_trend) > 100 else None)
+            # Ensure delta is numeric
+            volume_delta = float(recent_trend) if abs(recent_trend) > 100 else None
+            st.metric("Volume Change", f"{recent_trend:.0f} m³", delta=volume_delta)
         with col_t3:
             if len(timeline['values']) >= 2:
                 first_vol = timeline['values'][0]
                 last_vol = timeline['values'][-1]
                 total_change = ((last_vol - first_vol) / first_vol * 100) if first_vol > 0 else 0
-                st.metric("Total Change", f"{total_change:+.1f}%", delta=total_change)
+                # Ensure delta is numeric
+                change_delta = float(total_change) if total_change is not None else None
+                st.metric("Total Change", f"{total_change:+.1f}%", delta=change_delta)
         
         # Chart
         fig = go.Figure()
