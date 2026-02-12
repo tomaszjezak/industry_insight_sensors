@@ -208,7 +208,7 @@ def create_date_slider(start_date: date, end_date: date, key_prefix: str = "date
             min_value=start_ts,
             max_value=end_ts,
             value=start_ts,
-            step=86400,  # 1 day in seconds
+            step=86400.0,  # 1 day in seconds (float to match timestamp type)
             format="%Y-%m-%d",
             key=f"{key_prefix}_start"
         )
@@ -221,7 +221,7 @@ def create_date_slider(start_date: date, end_date: date, key_prefix: str = "date
             min_value=start_ts,
             max_value=end_ts,
             value=end_ts,
-            step=86400,
+            step=86400.0,  # 1 day in seconds (float to match timestamp type)
             format="%Y-%m-%d",
             key=f"{key_prefix}_end"
         )
@@ -503,7 +503,7 @@ def main():
                 img1 = cv2.imread(str(img1_path))
                 if img1 is not None:
                     st.markdown(f"**{date1.strftime('%B %Y')}**")
-                    st.image(numpy_to_streamlit(img1), use_container_width=True)
+                    st.image(numpy_to_streamlit(img1), width='stretch')
             
             with col_img2:
                 if len(images_in_range) > 1:
@@ -511,7 +511,7 @@ def main():
                     img2 = cv2.imread(str(img2_path))
                     if img2 is not None:
                         st.markdown(f"**{date2.strftime('%B %Y')}**")
-                        st.image(numpy_to_streamlit(img2), use_container_width=True)
+                        st.image(numpy_to_streamlit(img2), width='stretch')
                 else:
                     st.info("Only one image in range")
         
@@ -579,7 +579,7 @@ def main():
                 yaxis=dict(showgrid=True, gridcolor='#E0E0E0', title='Volume (m³)'),
             )
             
-            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
         
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)  # Close content-grid
