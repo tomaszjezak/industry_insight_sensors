@@ -352,230 +352,65 @@ def render_modal(img_path: Path, img_date: datetime, db_images: list, db: Timese
     # Draw overlays
     overlay_image = draw_ai_overlay(image, analysis_result)
     
-    # Convert to base64 for embedding in HTML
-    import base64
-    from io import BytesIO
-    from PIL import Image
-    
-    pil_image = Image.fromarray(numpy_to_streamlit(overlay_image))
-    buffered = BytesIO()
-    pil_image.save(buffered, format="PNG")
-    img_base64 = base64.b64encode(buffered.getvalue()).decode()
-    
     date_str = img_date.strftime('%B %Y')
     
-    # Modal HTML/CSS/JS
-    modal_html = f"""
-    <div id="imageModal" class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Facility Image - {date_str}</h2>
-                <button class="modal-close-btn" onclick="window.parent.postMessage({{type: 'streamlit:setComponentValue', value: 'close'}}, '*')">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="modal-image-container">
-                    <img src="data:image/png;base64,{img_base64}" alt="Facility Image" class="modal-image">
-                </div>
-                <div class="modal-stats">
-                    <h3>Site Statistics</h3>
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-label">Material Tonnage</div>
-                            <div class="stat-value">{stats['tonnage']:.1f} tons</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">Debris Volume</div>
-                            <div class="stat-value">{stats['volume']:.0f} m³</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">Containers Detected</div>
-                            <div class="stat-value">{stats['container_count']}</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">Material Purity</div>
-                            <div class="stat-value">{stats['purity']:.0f}%</div>
-                        </div>
-                    </div>
-                    {f'''
-                    <div class="materials-breakdown">
-                        <h4>Material Breakdown</h4>
-                        <div class="materials-list">
-                            {''.join([f'<div class="material-item"><span class="material-name">{mat.capitalize()}</span><span class="material-pct">{pct:.1f}%</span></div>' for mat, pct in stats['materials'].items()])}
-                        </div>
-                    </div>
-                    ''' if stats['materials'] else ''}
-                </div>
-            </div>
+    # Modal overlay using HTML/CSS
+    st.markdown("""
+    <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                background-color: rgba(0, 0, 0, 0.85); z-index: 9999; 
+                display: flex; justify-content: center; align-items: flex-start; 
+                padding: 20px; box-sizing: border-box; overflow-y: auto;">
+        <div style="background: white; border-radius: 12px; max-width: 90vw; 
+                    width: 100%; max-width: 1200px; margin: 20px auto; 
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);">
         </div>
     </div>
-    """
+    """, unsafe_allow_html=True)
     
-    # Modal CSS
-    modal_css = """
-    <style>
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.8);
-            z-index: 9999;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-            box-sizing: border-box;
-        }
-        
-        .modal-content {
-            background: white;
-            border-radius: 12px;
-            max-width: 90vw;
-            max-height: 90vh;
-            overflow-y: auto;
-            position: relative;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        }
-        
-        .modal-header {
-            padding: 20px 30px;
-            border-bottom: 2px solid #e0e0e0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .modal-close-btn {
-            background: none;
-            border: none;
-            font-size: 32px;
-            font-weight: bold;
-            color: #666;
-            cursor: pointer;
-            line-height: 1;
-            padding: 0;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .modal-close-btn:hover {
-            color: #000;
-            background: #f0f0f0;
-            border-radius: 50%;
-        }
-        
-        .modal-header h2 {
-            margin: 0;
-            color: #333;
-            font-size: 1.5em;
-        }
-        
-        .modal-body {
-            padding: 20px 30px;
-        }
-        
-        .modal-image-container {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        
-        .modal-image {
-            max-width: 100%;
-            max-height: 60vh;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .modal-stats {
-            margin-top: 20px;
-        }
-        
-        .modal-stats h3 {
-            margin-top: 0;
-            color: #333;
-            font-size: 1.2em;
-            margin-bottom: 15px;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        
-        .stat-card {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-        }
-        
-        .stat-label {
-            font-size: 0.85em;
-            color: #666;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 5px;
-        }
-        
-        .stat-value {
-            font-size: 1.5em;
-            font-weight: bold;
-            color: #228B22;
-        }
-        
-        .materials-breakdown {
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
-        }
-        
-        .materials-breakdown h4 {
-            margin-top: 0;
-            color: #333;
-            font-size: 1em;
-            margin-bottom: 10px;
-        }
-        
-        .materials-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        .material-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 12px;
-            background: #f8f9fa;
-            border-radius: 4px;
-        }
-        
-        .material-name {
-            color: #333;
-            font-weight: 500;
-        }
-        
-        .material-pct {
-            color: #228B22;
-            font-weight: bold;
-        }
-    </style>
-    """
+    # Modal content using Streamlit components
+    # Header with close button
+    col_header1, col_header2 = st.columns([10, 1])
+    with col_header1:
+        st.markdown(f"### Facility Image - {date_str}")
+    with col_header2:
+        if st.button("✕", key="modal_close_x", help="Close modal"):
+            st.session_state.modal_open = False
+            st.session_state.selected_image_index = None
+            st.rerun()
     
-    # Render modal CSS and HTML
-    st.markdown(modal_css, unsafe_allow_html=True)
-    st.markdown(modal_html, unsafe_allow_html=True)
+    st.markdown("---")
     
-    # Close button using Streamlit button
-    col1, col2, col3 = st.columns([1, 1, 1])
+    # Display image with overlays
+    st.image(numpy_to_streamlit(overlay_image), 
+            caption=f"AI-Enhanced View - {date_str}",
+            use_container_width=True)
+    
+    st.markdown("---")
+    
+    # Stats section
+    st.markdown("#### Site Statistics")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Material Tonnage", f"{stats['tonnage']:.1f} tons")
     with col2:
-        if st.button("✕ Close", key="close_modal", use_container_width=True):
+        st.metric("Debris Volume", f"{stats['volume']:.0f} m³")
+    with col3:
+        st.metric("Containers Detected", stats['container_count'])
+    with col4:
+        st.metric("Material Purity", f"{stats['purity']:.0f}%")
+    
+    # Material breakdown
+    if stats['materials']:
+        st.markdown("#### Material Breakdown")
+        for material, pct in stats['materials'].items():
+            st.progress(pct / 100, text=f"{material.capitalize()}: {pct:.1f}%")
+    
+    # Close button at bottom
+    st.markdown("---")
+    col_close1, col_close2, col_close3 = st.columns([1, 1, 1])
+    with col_close2:
+        if st.button("Close Modal", key="modal_close_bottom", use_container_width=True):
             st.session_state.modal_open = False
             st.session_state.selected_image_index = None
             st.rerun()
@@ -651,6 +486,7 @@ def main():
         st.session_state.modal_open = False
     if 'selected_image_index' not in st.session_state:
         st.session_state.selected_image_index = None
+    
     
     # Get images in date range
     timelapse_images = find_timelapse_images()
