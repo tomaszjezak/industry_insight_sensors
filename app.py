@@ -377,10 +377,10 @@ def main():
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("Containers", f"{container_count}")
+                    st.metric("Containers", container_count)
                     st.metric("Tonnage", f"{current_tonnage:.1f} tons")
                 with col2:
-                    st.metric("Storage", f"{utilization:.0f}%", f"{trend_icon} {trend_pct:+.1f}%")
+                    st.metric("Storage", f"{utilization:.0f}%", delta=f"{trend_pct:+.1f}%")
                     st.metric("Volume", f"{current_volume:.0f} m³")
         
         # B. Material Quality & Contamination (Top Right)
@@ -449,9 +449,9 @@ def main():
                 arrivals = departures = net_change = 0
             
             st.metric("Throughput", f"{throughput:.1f} tons/day")
-            st.metric("Arrivals", f"{arrivals}", delta=f"+{arrivals}")
-            st.metric("Departures", f"{departures}", delta=f"-{departures}")
-            st.metric("Net Change", f"{net_change:+d}", delta=f"{net_change:+d}")
+            st.metric("Arrivals", arrivals, delta=arrivals if arrivals > 0 else None)
+            st.metric("Departures", departures, delta=-departures if departures > 0 else None)
+            st.metric("Net Change", net_change, delta=net_change)
         else:
             st.info("Insufficient data for efficiency metrics")
         
@@ -482,7 +482,7 @@ def main():
             
             st.metric("Housekeeping", f"{housekeeping:.0f}%")
             st.markdown(f'<div style="color: {compliance_color}; font-weight: 600;">{compliance_status}</div>', unsafe_allow_html=True)
-            st.metric("Hazard Alerts", "0", delta="None detected")
+            st.metric("Hazard Alerts", 0)
         else:
             st.info("Safety data not available")
         
@@ -529,20 +529,20 @@ def main():
             
             col_pred1, col_pred2, col_pred3 = st.columns(3)
             with col_pred1:
-                st.metric("7-Day Forecast", f"{forecast:.0f} m³", delta=f"{forecast_pct:+.1f}%")
+                st.metric("7-Day Forecast", f"{forecast:.0f} m³", delta=f"{forecast_pct:.1f}%")
             
             with col_pred2:
                 # Diversion rate proxy (assume all detected material is recyclable)
                 total_volume = sum(timeline['values'])
                 diversion_rate = 100  # Heuristic: all detected = recyclable
-                st.metric("Diversion Rate", f"{diversion_rate:.0f}%", delta="Proxy estimate")
+                st.metric("Diversion Rate", f"{diversion_rate:.0f}%")
             
             with col_pred3:
                 # Trend direction
                 if len(timeline['values']) >= 2:
                     recent_trend = timeline['values'][-1] - timeline['values'][-2]
-                    trend_direction = "📈 Growing" if recent_trend > 0 else "📉 Declining" if recent_trend < 0 else "➡️ Stable"
-                    st.metric("Trend", trend_direction)
+                    trend_value = f"{recent_trend:.0f} m³"
+                    st.metric("Trend", trend_value, delta=recent_trend)
             
             # Trend Chart
             fig = go.Figure()
