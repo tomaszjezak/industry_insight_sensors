@@ -347,10 +347,18 @@ def main():
             # Use cached results from database - NO SLOW MODEL LOADING!
             analysis_result = None
             container_list = []  # Initialize to avoid undefined variable
+            container_count = 0  # Initialize
+            tonnage = 0.0  # Initialize
+            volume = 0.0  # Initialize
+            purity = 0.0  # Initialize
+            
             if db_img:
                 # Get containers from database
-                containers = db.get_containers_by_date_range(img_date_str, img_date_str)
-                container_list = [c for c in containers if c['image_id'] == db_img['id']] if containers else []
+                try:
+                    containers = db.get_containers_by_date_range(img_date_str, img_date_str)
+                    container_list = [c for c in containers if c['image_id'] == db_img['id']] if containers else []
+                except:
+                    container_list = []
                 
                 # Create result from database (already processed)
                 analysis_result = {
@@ -363,6 +371,29 @@ def main():
                         'mask': None,  # We'll get this from a simple segmentation if needed
                     }
                 }
+                
+                # Pre-calculate all metric values to ensure they're numeric
+                container_count = int(len(container_list)) if container_list else 0
+                
+                tonnage_raw = db_img.get('tonnage_estimate', 0) or 0
+                try:
+                    tonnage = float(tonnage_raw) if tonnage_raw is not None else 0.0
+                except (ValueError, TypeError):
+                    tonnage = 0.0
+                
+                volume_raw = db_img.get('volume_m3', 0) or 0
+                try:
+                    volume = float(volume_raw) if volume_raw is not None else 0.0
+                except (ValueError, TypeError):
+                    volume = 0.0
+                
+                if db_img.get('materials_json'):
+                    try:
+                        materials = json.loads(db_img['materials_json'])
+                        purity_raw = calculate_purity_score(materials)
+                        purity = float(purity_raw) if purity_raw is not None else 0.0
+                    except:
+                        purity = 0.0
             
             # Always run segmentation for visualization (fast OpenCV method)
             # This ensures we always have segmentation outlines
@@ -398,26 +429,11 @@ def main():
                 st.markdown("#### 📊 Real-Time Metrics")
                 
                 if db_img:
-                    # Ensure container_count is numeric
-                    container_count = len(container_list) if 'container_list' in locals() and container_list else 0
-                    container_count = int(container_count) if container_count is not None else 0
+                    # All values are pre-calculated and guaranteed to be numeric
                     st.metric("Containers Detected", container_count)
-                    
-                    # Ensure tonnage is numeric
-                    tonnage = db_img.get('tonnage_estimate', 0) or 0
-                    tonnage = float(tonnage) if tonnage is not None else 0.0
                     st.metric("Material Tonnage", f"{tonnage:.1f} tons")
-                    
-                    # Ensure volume is numeric
-                    volume = db_img.get('volume_m3', 0) or 0
-                    volume = float(volume) if volume is not None else 0.0
                     st.metric("Debris Volume", f"{volume:.0f} m³")
-                    
-                    if db_img.get('materials_json'):
-                        materials = json.loads(db_img['materials_json'])
-                        purity = calculate_purity_score(materials)
-                        # Ensure purity is numeric
-                        purity = float(purity) if purity is not None else 0.0
+                    if purity > 0:
                         st.metric("Material Purity", f"{purity:.0f}%")
                 else:
                     st.info("No analysis data for this image")
