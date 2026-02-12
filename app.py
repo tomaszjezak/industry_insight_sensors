@@ -346,10 +346,11 @@ def main():
             
             # Use cached results from database - NO SLOW MODEL LOADING!
             analysis_result = None
+            container_list = []  # Initialize to avoid undefined variable
             if db_img:
                 # Get containers from database
                 containers = db.get_containers_by_date_range(img_date_str, img_date_str)
-                container_list = [c for c in containers if c['image_id'] == db_img['id']]
+                container_list = [c for c in containers if c['image_id'] == db_img['id']] if containers else []
                 
                 # Create result from database (already processed)
                 analysis_result = {
@@ -397,18 +398,26 @@ def main():
                 st.markdown("#### 📊 Real-Time Metrics")
                 
                 if db_img:
-                    container_count = len(container_list) if 'container_list' in locals() else 0
+                    # Ensure container_count is numeric
+                    container_count = len(container_list) if 'container_list' in locals() and container_list else 0
+                    container_count = int(container_count) if container_count is not None else 0
                     st.metric("Containers Detected", container_count)
                     
+                    # Ensure tonnage is numeric
                     tonnage = db_img.get('tonnage_estimate', 0) or 0
+                    tonnage = float(tonnage) if tonnage is not None else 0.0
                     st.metric("Material Tonnage", f"{tonnage:.1f} tons")
                     
+                    # Ensure volume is numeric
                     volume = db_img.get('volume_m3', 0) or 0
+                    volume = float(volume) if volume is not None else 0.0
                     st.metric("Debris Volume", f"{volume:.0f} m³")
                     
                     if db_img.get('materials_json'):
                         materials = json.loads(db_img['materials_json'])
                         purity = calculate_purity_score(materials)
+                        # Ensure purity is numeric
+                        purity = float(purity) if purity is not None else 0.0
                         st.metric("Material Purity", f"{purity:.0f}%")
                 else:
                     st.info("No analysis data for this image")
