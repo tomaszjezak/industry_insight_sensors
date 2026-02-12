@@ -131,7 +131,7 @@ class ContainerDetector:
             if container_type:
                 # Get bounding box
                 box = cv2.boxPoints(rect)
-                box = np.int0(box)
+                box = np.int32(box)
                 
                 # Get centroid
                 moments = cv2.moments(contour)
@@ -202,7 +202,7 @@ class ContainerDetector:
             # Pallet/bale size range: 0.8m to 2.5m
             if 0.8 < size_m < 2.5:
                 box = cv2.boxPoints(rect)
-                box = np.int0(box)
+                box = np.int32(box)
                 
                 moments = cv2.moments(contour)
                 if moments['m00'] > 0:
