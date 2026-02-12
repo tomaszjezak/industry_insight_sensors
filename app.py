@@ -378,6 +378,7 @@ def main():
             
             with col_img1:
                 date_str = img_date.strftime('%B %Y')
+                # Display full resolution image - Streamlit will handle scaling
                 st.image(numpy_to_streamlit(overlay_image), 
                         caption=f"AI-Enhanced View - {date_str}", 
                         use_container_width=True)
