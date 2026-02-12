@@ -88,9 +88,10 @@ def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None) -> np.ndarr
                 # Find individual contours (each pile is a separate contour)
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 
-                # Filter out very small contours (noise) and very large ones (entire image)
-                min_area = h * w * 0.01  # At least 1% of image
-                max_area = h * w * 0.8    # Max 80% of image
+                # Filter out very small contours (noise) and very large ones (buildings)
+                # Debris piles are typically 2-30% of image area
+                min_area = h * w * 0.02  # At least 2% of image
+                max_area = h * w * 0.30  # Max 30% (buildings are larger)
                 
                 for contour in contours:
                     area = cv2.contourArea(contour)
@@ -122,8 +123,8 @@ def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None) -> np.ndarr
             _, mask = cv2.threshold(seg_gray, 50, 255, cv2.THRESH_BINARY)
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
-            min_area = h * w * 0.01
-            max_area = h * w * 0.8
+            min_area = h * w * 0.02
+            max_area = h * w * 0.30
             
             for contour in contours:
                 area = cv2.contourArea(contour)
