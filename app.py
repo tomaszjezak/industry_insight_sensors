@@ -277,40 +277,77 @@ def main():
     ]
     
     if images_in_range:
-        # Get latest image
-        img_path, img_date = images_in_range[-1]
+        # Image Gallery - Show all thumbnails
+        st.markdown("#### 📸 Image Gallery")
+        num_cols = 4
+        cols = st.columns(num_cols)
+        
+        for idx, (img_path, img_date) in enumerate(images_in_range):
+            col_idx = idx % num_cols
+            with cols[col_idx]:
+                # Load and resize thumbnail
+                thumb = cv2.imread(str(img_path))
+                if thumb is not None:
+                    thumb_resized = cv2.resize(thumb, (200, 150))
+                    st.image(numpy_to_streamlit(thumb_resized), 
+                            caption=img_date.strftime('%B %Y'), 
+                            use_container_width=True)
+        
+        st.markdown("---")
+        
+        # Image selector - scroll through images
+        st.markdown("#### 🔍 Detailed View")
+        if len(images_in_range) > 1:
+            selected_idx = st.slider(
+                "Select Image",
+                0, 
+                len(images_in_range) - 1,
+                len(images_in_range) - 1,  # Default to latest
+                format="Image %d of %d"
+            )
+        else:
+            selected_idx = 0
+        
+        img_path, img_date = images_in_range[selected_idx]
         image = cv2.imread(str(img_path))
         
         if image is not None:
+            # Get analysis for this specific image
+            img_date_str = img_date.date().isoformat()
+            db_img = None
+            for img in images:
+                if img['date'].startswith(img_date_str):
+                    db_img = img
+                    break
+            
             # Use cached results from database - NO SLOW MODEL LOADING!
             analysis_result = None
-            if latest_img:
+            if db_img:
                 # Get containers from database
-                containers = db.get_containers_by_date_range(selected_end.isoformat()[:10], selected_end.isoformat()[:10])
-                container_list = [c for c in containers if c['image_id'] == latest_img['id']]
+                containers = db.get_containers_by_date_range(img_date_str, img_date_str)
+                container_list = [c for c in containers if c['image_id'] == db_img['id']]
                 
                 # Create result from database (already processed)
                 analysis_result = {
                     'volume': {
-                        'volume_m3': latest_img.get('volume_m3', 0) or 0,
-                        'tonnage_estimate': latest_img.get('tonnage_estimate', 0) or 0,
+                        'volume_m3': db_img.get('volume_m3', 0) or 0,
+                        'tonnage_estimate': db_img.get('tonnage_estimate', 0) or 0,
                     },
                     'containers': container_list,
                     'segmentation': {
                         'mask': None,  # We'll get this from a simple segmentation if needed
                     }
                 }
-                
-                # Try to get segmentation mask - use simple method if not cached
-                # For Street View images, use fixed camera height (3-5m typical)
-                STREETVIEW_CAMERA_HEIGHT = 4.0  # Typical Google Street View height
-                
-                # Simple segmentation for visualization (fast, no SAM/MiDaS)
-                from src.segmentation import PileSegmenter
-                segmenter = PileSegmenter(use_sam=False)  # Fast OpenCV method
-                seg_result = segmenter.segment(image)
-                if seg_result and 'mask' in seg_result:
-                    analysis_result['segmentation']['mask'] = seg_result['mask']
+            
+            # Always run segmentation for visualization (fast OpenCV method)
+            # This ensures we always have segmentation outlines
+            from src.segmentation import PileSegmenter
+            segmenter = PileSegmenter(use_sam=False)  # Fast OpenCV method
+            seg_result = segmenter.segment(image)
+            if seg_result and 'mask' in seg_result and seg_result['mask'] is not None:
+                if analysis_result is None:
+                    analysis_result = {'segmentation': {}}
+                analysis_result['segmentation']['mask'] = seg_result['mask']
             
             # Draw AI overlays (segmentation outlines, containers, metrics)
             overlay_image = draw_ai_overlay(image, analysis_result)
@@ -318,19 +355,25 @@ def main():
             col_img1, col_img2 = st.columns([2, 1])
             
             with col_img1:
-                st.image(numpy_to_streamlit(overlay_image), caption=f"AI-Enhanced View - {img_date.strftime('%B %Y')}", use_container_width=True)
+                date_str = img_date.strftime('%B %Y')
+                st.image(numpy_to_streamlit(overlay_image), 
+                        caption=f"AI-Enhanced View - {date_str}", 
+                        use_container_width=True)
             
             with col_img2:
                 st.markdown("#### 📊 Real-Time Metrics")
                 
-                st.metric("Containers Detected", latest.get('containers', 0))
-                st.metric("Material Tonnage", f"{latest.get('tonnage', 0):.1f} tons")
-                st.metric("Debris Volume", f"{latest.get('volume_m3', 0):.0f} m³")
-                
-                if latest_img and latest_img.get('materials_json'):
-                    materials = json.loads(latest_img['materials_json'])
-                    purity = calculate_purity_score(materials)
-                    st.metric("Material Purity", f"{purity:.0f}%")
+                if db_img:
+                    st.metric("Containers Detected", len(container_list) if 'container_list' in locals() else 0)
+                    st.metric("Material Tonnage", f"{db_img.get('tonnage_estimate', 0):.1f} tons")
+                    st.metric("Debris Volume", f"{db_img.get('volume_m3', 0):.0f} m³")
+                    
+                    if db_img.get('materials_json'):
+                        materials = json.loads(db_img['materials_json'])
+                        purity = calculate_purity_score(materials)
+                        st.metric("Material Purity", f"{purity:.0f}%")
+                else:
+                    st.info("No analysis data for this image")
     
     # Material Quality Section
     st.markdown("---")
