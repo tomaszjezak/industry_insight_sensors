@@ -174,50 +174,64 @@ class PileSegmenter:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         
-        # === SIMPLE EXCLUSIONS ===
-        # Only exclude obvious things: bright sky, saturated green
-        sky_mask = cv2.inRange(hsv, (100, 0, 200), (130, 60, 255))  # Very bright blue
-        green_mask = cv2.inRange(hsv, (40, 50, 50), (80, 255, 255))  # Saturated green
-        exclude_mask = cv2.bitwise_or(sky_mask, green_mask)
-        exclude_mask = cv2.dilate(exclude_mask, np.ones((7, 7), np.uint8))
+        # === STRICT EXCLUSIONS ===
+        # Exclude sky (bright blue/white)
+        sky_mask = cv2.inRange(hsv, (100, 0, 200), (130, 60, 255))
+        # Exclude vegetation (green)
+        green_mask = cv2.inRange(hsv, (40, 50, 50), (80, 255, 255))
+        # Exclude bright uniform areas (buildings, roads)
+        bright_uniform = cv2.inRange(hsv, (0, 0, 200), (180, 30, 255))
+        exclude_mask = cv2.bitwise_or(cv2.bitwise_or(sky_mask, green_mask), bright_uniform)
+        exclude_mask = cv2.dilate(exclude_mask, np.ones((15, 15), np.uint8))
         
-        # === FIND INTERESTING REGIONS ===
-        # Texture (Laplacian magnitude)
+        # === FIND DEBRIS PILES ===
+        # Debris piles have: high texture variance, mixed colors, irregular shapes
+        # Texture variance (high variance = debris, low = uniform buildings)
         texture = np.abs(cv2.Laplacian(gray, cv2.CV_64F))
-        texture = cv2.GaussianBlur(texture, (11, 11), 0)
-        texture_norm = (texture / (texture.max() + 1e-8) * 255).astype(np.uint8)
-        _, textured = cv2.threshold(texture_norm, 15, 255, cv2.THRESH_BINARY)
+        texture_blur = cv2.GaussianBlur(texture, (15, 15), 0)
+        texture_var = cv2.GaussianBlur((texture - texture_blur) ** 2, (15, 15), 0)
+        texture_norm = (texture_var / (texture_var.max() + 1e-8) * 255).astype(np.uint8)
+        _, textured = cv2.threshold(texture_norm, 30, 255, cv2.THRESH_BINARY)  # Higher threshold
         
-        # Edges
-        edges = cv2.Canny(gray, 30, 100)
-        edges_dilated = cv2.dilate(edges, np.ones((5, 5), np.uint8))
+        # Color variance - debris has mixed colors (high variance)
+        # Buildings/roads are uniform (low variance)
+        b, g, r = cv2.split(image)
+        color_var = np.sqrt((b.astype(float) - gray.astype(float))**2 + 
+                           (g.astype(float) - gray.astype(float))**2 + 
+                           (r.astype(float) - gray.astype(float))**2)
+        color_var_norm = (color_var / (color_var.max() + 1e-8) * 255).astype(np.uint8)
+        _, high_var = cv2.threshold(color_var_norm, 40, 255, cv2.THRESH_BINARY)
         
-        # Combine texture and edges
-        combined = cv2.bitwise_or(textured, edges_dilated)
+        # Combine: high texture AND high color variance = debris
+        combined = cv2.bitwise_and(textured, high_var)
         
-        # Remove exclusions
+        # Remove exclusions (buildings, sky, vegetation)
+        exclude_mask = cv2.bitwise_or(exclude_mask, cv2.inRange(hsv, (0, 0, 200), (180, 30, 255)))  # Bright uniform
+        exclude_mask = cv2.dilate(exclude_mask, np.ones((15, 15), np.uint8))
         combined = cv2.bitwise_and(combined, cv2.bitwise_not(exclude_mask))
         
-        # Morphological cleanup
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        # Morphological cleanup - larger kernels
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
         combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel)
-        combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel)
+        kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 10))
+        combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel_small)
         
-        # Fill holes in contours
+        # Fill holes
         contours_fill, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         filled = np.zeros((h, w), dtype=np.uint8)
         cv2.drawContours(filled, contours_fill, -1, 255, -1)
         
-        # Find and filter contours
+        # Find and STRICTLY filter contours
         contours, _ = cv2.findContours(filled, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         final_mask = np.zeros((h, w), dtype=np.uint8)
         segments = []
         
-        min_area = h * w * 0.003  # 0.3% of image minimum
-        max_area = h * w * 0.8    # 80% max
+        # Stricter area limits - debris piles are typically 2-30% of image
+        min_area = h * w * 0.02   # At least 2% of image
+        max_area = h * w * 0.30   # Max 30% (buildings are larger)
         
-        for i, contour in enumerate(sorted(contours, key=cv2.contourArea, reverse=True)[:20]):
+        for i, contour in enumerate(sorted(contours, key=cv2.contourArea, reverse=True)[:15]):
             area = cv2.contourArea(contour)
             if area < min_area or area > max_area:
                 continue
@@ -235,8 +249,23 @@ class PileSegmenter:
             hull_area = cv2.contourArea(hull)
             solidity = area / (hull_area + 1)
             
-            # Less strict filtering
-            is_pile_candidate = aspect < 10 and solidity > 0.2
+            # Check texture/variance in this region
+            roi = image[y:y+bh, x:x+bw]
+            if roi.size > 0:
+                roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                roi_texture = np.std(cv2.Laplacian(roi_gray, cv2.CV_64F))
+                roi_color_var = np.std(roi.reshape(-1, 3).astype(float), axis=0).mean()
+            else:
+                roi_texture = 0
+                roi_color_var = 0
+            
+            # STRICT filtering: exclude buildings (perfect rectangles), signs (small), roads (elongated)
+            is_pile_candidate = (
+                aspect < 5 and  # Not too elongated (roads)
+                solidity > 0.3 and solidity < 0.9 and  # Irregular, not perfect rectangle (buildings)
+                roi_texture > 20 and  # High texture (debris)
+                roi_color_var > 15  # Mixed colors (debris)
+            )
             
             segments.append({
                 'id': i,
@@ -245,6 +274,8 @@ class PileSegmenter:
                 'bbox': [x, y, bw, bh],
                 'aspect_ratio': round(aspect, 2),
                 'solidity': round(solidity, 2),
+                'texture': round(roi_texture, 1),
+                'color_var': round(roi_color_var, 1),
                 'is_pile_candidate': is_pile_candidate,
             })
             
@@ -255,7 +286,7 @@ class PileSegmenter:
             'mask': final_mask,
             'masks': [final_mask],
             'segments': segments,
-            'method': 'opencv_v2',
+            'method': 'opencv_v3_strict',
         }
     
     def visualize(self, image: np.ndarray, result: dict, alpha: float = 0.5) -> np.ndarray:
