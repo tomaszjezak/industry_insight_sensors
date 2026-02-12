@@ -98,7 +98,13 @@ def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None) -> np.ndarr
         seg_result = analysis_result['segmentation']
         if 'mask' in seg_result:
             mask = seg_result['mask']
-            if isinstance(mask, np.ndarray):
+            if isinstance(mask, np.ndarray) and mask.size > 0:
+                # Ensure mask is binary (0 or 255)
+                if mask.dtype != np.uint8:
+                    mask = (mask > 0).astype(np.uint8) * 255
+                elif mask.max() <= 1:
+                    mask = (mask * 255).astype(np.uint8)
+                
                 # Find individual contours (each pile is a separate contour)
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 
@@ -107,11 +113,13 @@ def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None) -> np.ndarr
                 min_area = h * w * 0.02  # At least 2% of image
                 max_area = h * w * 0.30  # Max 30% (buildings are larger)
                 
+                num_piles = 0
                 for contour in contours:
                     area = cv2.contourArea(contour)
                     if min_area < area < max_area:
-                        # Draw green outline for each individual pile
-                        cv2.drawContours(overlay, [contour], -1, (0, 255, 0), 3)
+                        num_piles += 1
+                        # Draw green outline for each individual pile (thicker for visibility)
+                        cv2.drawContours(overlay, [contour], -1, (0, 255, 0), 4)
                         
                         # Add label for each pile
                         M = cv2.moments(contour)
@@ -120,7 +128,7 @@ def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None) -> np.ndarr
                             cy = int(M['m01'] / M['m00'])
                             # Label with area - white background with dark text for visibility
                             area_m2 = area * 0.01  # Rough estimate (would need proper scaling)
-                            label_text = f"Pile: {area_m2:.0f}m²"
+                            label_text = f"Pile {num_piles}: {area_m2:.0f}m²"
                             (text_width, text_height), baseline = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
                             # White background box
                             padding = 5
