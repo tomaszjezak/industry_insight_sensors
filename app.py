@@ -455,21 +455,26 @@ def main():
         col_e1, col_e2, col_e3, col_e4 = st.columns(4)
         
         with col_e1:
-            st.metric("Throughput", f"{throughput:.1f} tons/day")
+            # Ensure throughput is numeric
+            throughput_val = float(throughput) if throughput is not None else 0.0
+            st.metric("Throughput", f"{throughput_val:.1f} tons/day")
         
         with col_e2:
             arrivals = changes['summary'].get('arrivals', 0) if changes.get('summary') else 0
-            st.metric("Arrivals", arrivals)
+            arrivals_val = int(arrivals) if arrivals is not None else 0
+            st.metric("Arrivals", arrivals_val)
         
         with col_e3:
             departures = changes['summary'].get('departures', 0) if changes.get('summary') else 0
-            st.metric("Departures", departures)
+            departures_val = int(departures) if departures is not None else 0
+            st.metric("Departures", departures_val)
         
         with col_e4:
             net = changes['summary'].get('net_change', 0) if changes.get('summary') else 0
-            # Ensure delta is numeric, not string
-            net_delta = float(net) if net is not None else None
-            st.metric("Net Change", net, delta=net_delta)
+            # Ensure delta is numeric, not string or None
+            net_delta = float(net) if net is not None and net != 0 else None
+            net_val = int(net) if net is not None else 0
+            st.metric("Net Change", net_val, delta=net_delta)
     
     # Trend Chart
     st.markdown("---")
@@ -479,20 +484,23 @@ def main():
         col_t1, col_t2, col_t3 = st.columns(3)
         with col_t1:
             current = timeline['values'][-1]
-            st.metric("Current Debris Volume", f"{current:.0f} m³")
+            current_val = float(current) if current is not None else 0.0
+            st.metric("Current Debris Volume", f"{current_val:.0f} m³")
         with col_t2:
             recent_trend = timeline['values'][-1] - timeline['values'][-2]
+            recent_trend_val = float(recent_trend) if recent_trend is not None else 0.0
             # Ensure delta is numeric
-            volume_delta = float(recent_trend) if abs(recent_trend) > 100 else None
-            st.metric("Volume Change", f"{recent_trend:.0f} m³", delta=volume_delta)
+            volume_delta = float(recent_trend) if recent_trend is not None and abs(recent_trend) > 100 else None
+            st.metric("Volume Change", f"{recent_trend_val:.0f} m³", delta=volume_delta)
         with col_t3:
             if len(timeline['values']) >= 2:
                 first_vol = timeline['values'][0]
                 last_vol = timeline['values'][-1]
                 total_change = ((last_vol - first_vol) / first_vol * 100) if first_vol > 0 else 0
-                # Ensure delta is numeric
-                change_delta = float(total_change) if total_change is not None else None
-                st.metric("Total Change", f"{total_change:+.1f}%", delta=change_delta)
+                # Ensure all values are numeric
+                total_change_val = float(total_change) if total_change is not None else 0.0
+                change_delta = float(total_change) if total_change is not None and abs(total_change) > 0.1 else None
+                st.metric("Total Change", f"{total_change_val:+.1f}%", delta=change_delta)
         
         # Chart
         fig = go.Figure()
