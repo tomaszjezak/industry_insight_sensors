@@ -74,29 +74,61 @@ def numpy_to_streamlit(img: np.ndarray) -> np.ndarray:
 
 def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None) -> np.ndarray:
     """
-    Draw AI monitoring overlays on image - segmentation outlines, bounding boxes, metrics.
+    Draw AI monitoring overlays on image - segmentation outlines for individual piles, bounding boxes, metrics.
     """
     overlay = image.copy()
     h, w = overlay.shape[:2]
     
-    # Draw segmentation outlines (green contours for detected debris piles)
-    if analysis_result and '_visualizations' in analysis_result:
-        seg_vis = analysis_result['_visualizations'].get('segmentation')
-        if seg_vis is not None:
-            # Extract contours from segmentation visualization
-            seg_gray = cv2.cvtColor(seg_vis, cv2.COLOR_BGR2GRAY)
-            contours, _ = cv2.findContours(seg_gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            # Draw green outlines
-            cv2.drawContours(overlay, contours, -1, (0, 255, 0), 3)
-    
-    # Also try to get segmentation mask directly if available
+    # Draw segmentation outlines for individual debris piles (green contours)
     if analysis_result and 'segmentation' in analysis_result:
         seg_result = analysis_result['segmentation']
         if 'mask' in seg_result:
             mask = seg_result['mask']
             if isinstance(mask, np.ndarray):
+                # Find individual contours (each pile is a separate contour)
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                cv2.drawContours(overlay, contours, -1, (0, 255, 0), 3)
+                
+                # Filter out very small contours (noise) and very large ones (entire image)
+                min_area = h * w * 0.01  # At least 1% of image
+                max_area = h * w * 0.8    # Max 80% of image
+                
+                for contour in contours:
+                    area = cv2.contourArea(contour)
+                    if min_area < area < max_area:
+                        # Draw green outline for each individual pile
+                        cv2.drawContours(overlay, [contour], -1, (0, 255, 0), 3)
+                        
+                        # Add label for each pile
+                        M = cv2.moments(contour)
+                        if M['m00'] > 0:
+                            cx = int(M['m10'] / M['m00'])
+                            cy = int(M['m01'] / M['m00'])
+                            # Label with area - white background for visibility
+                            area_m2 = area * 0.01  # Rough estimate (would need proper scaling)
+                            label_text = f"Pile: {area_m2:.0f}m²"
+                            (text_width, text_height), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+                            # White background
+                            cv2.rectangle(overlay, (cx - 60, cy - 15), (cx + text_width - 50, cy + 5), (255, 255, 255), -1)
+                            cv2.putText(overlay, label_text, (cx - 50, cy),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 100, 0), 2)  # Dark green text
+    
+    # Also check _visualizations for segmentation mask
+    elif analysis_result and '_visualizations' in analysis_result:
+        seg_vis = analysis_result['_visualizations'].get('segmentation')
+        if seg_vis is not None:
+            # Extract mask from visualization (green channel shows segmentation)
+            seg_gray = cv2.cvtColor(seg_vis, cv2.COLOR_BGR2GRAY)
+            # Threshold to get binary mask
+            _, mask = cv2.threshold(seg_gray, 50, 255, cv2.THRESH_BINARY)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            min_area = h * w * 0.01
+            max_area = h * w * 0.8
+            
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if min_area < area < max_area:
+                    cv2.drawContours(overlay, [contour], -1, (0, 255, 0), 3)
     
     # Draw containers with bounding boxes (blue)
     if analysis_result and 'containers' in analysis_result:
@@ -106,11 +138,14 @@ def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None) -> np.ndarr
                 # Draw blue bounding box
                 cv2.drawContours(overlay, [bbox], -1, (255, 165, 0), 3)
                 
-                # Add label
+                # Add label with dark background for visibility
                 cx, cy = container.get('centroid', (0, 0))
                 label = f"Container: {container.get('type', 'unknown')}"
+                (text_width, text_height), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                # White background for text
+                cv2.rectangle(overlay, (cx - 90, cy - 30), (cx + text_width - 80, cy + 5), (255, 255, 255), -1)
                 cv2.putText(overlay, label, (cx - 80, cy - 10),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 165, 0), 2)
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)  # Black text
     
     # Draw metrics overlay (green boxes in corner with clear labels)
     if analysis_result:
@@ -126,11 +161,13 @@ def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None) -> np.ndarr
         for label, value in metrics:
             text = f"{label}: {value}"
             (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-            # Green background box
+            # Green background box with dark text for visibility
             cv2.rectangle(overlay, (w - text_width - 30, y_pos - 25),
-                         (w - 10, y_pos + 5), (34, 139, 34), -1)
+                         (w - 10, y_pos + 5), (200, 255, 200), -1)  # Light green background
+            cv2.rectangle(overlay, (w - text_width - 30, y_pos - 25),
+                         (w - 10, y_pos + 5), (34, 139, 34), 2)  # Green border
             cv2.putText(overlay, text, (w - text_width - 20, y_pos),
-                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 100, 0), 2)  # Dark green text
             y_pos -= 35
     
     return overlay
