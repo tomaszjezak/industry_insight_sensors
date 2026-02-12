@@ -380,7 +380,7 @@ def main():
                     st.metric("Containers", container_count)
                     st.metric("Tonnage", f"{current_tonnage:.1f} tons")
                 with col2:
-                    st.metric("Storage", f"{utilization:.0f}%", delta=f"{trend_pct:+.1f}%")
+                    st.metric("Storage", f"{utilization:.0f}%", delta=trend_pct)
                     st.metric("Volume", f"{current_volume:.0f} m³")
         
         # B. Material Quality & Contamination (Top Right)
@@ -414,7 +414,9 @@ def main():
                     col1, col2 = st.columns(2)
                     with col1:
                         alert_class = "alert" if purity < 70 else "warning" if purity < 85 else ""
-                        st.metric("Purity Score", f"{purity:.0f}%", delta=None if purity >= 85 else "Low" if purity < 70 else "Moderate")
+                        # Calculate purity delta (vs 85% target)
+                        purity_delta = purity - 85
+                        st.metric("Purity Score", f"{purity:.0f}%", delta=purity_delta if purity_delta != 0 else None)
                     with col2:
                         if contamination > 20:
                             st.error(f"⚠️ High contamination: {contamination:.1f}%")
@@ -529,7 +531,9 @@ def main():
             
             col_pred1, col_pred2, col_pred3 = st.columns(3)
             with col_pred1:
-                st.metric("7-Day Forecast", f"{forecast:.0f} m³", delta=f"{forecast_pct:.1f}%")
+                # Calculate absolute forecast change
+                forecast_delta = forecast - current
+                st.metric("7-Day Forecast", f"{forecast:.0f} m³", delta=forecast_delta if abs(forecast_delta) > 1 else None)
             
             with col_pred2:
                 # Diversion rate proxy (assume all detected material is recyclable)
@@ -542,7 +546,7 @@ def main():
                 if len(timeline['values']) >= 2:
                     recent_trend = timeline['values'][-1] - timeline['values'][-2]
                     trend_value = f"{recent_trend:.0f} m³"
-                    st.metric("Trend", trend_value, delta=recent_trend)
+                    st.metric("Trend", trend_value, delta=recent_trend if abs(recent_trend) > 1 else None)
             
             # Trend Chart
             fig = go.Figure()
