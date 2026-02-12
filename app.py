@@ -527,7 +527,6 @@ def main():
             # Volume forecast
             forecast = simple_forecast(timeline['values'], 7)
             current = timeline['values'][-1]
-            forecast_pct = ((forecast - current) / current * 100) if current > 0 else 0
             
             col_pred1, col_pred2, col_pred3 = st.columns(3)
             with col_pred1:
