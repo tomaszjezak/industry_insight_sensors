@@ -22,6 +22,10 @@ st.set_page_config(
 # Import pipeline components
 from src.scraper import list_available_images, DATA_DIR
 from src.pipeline import DebrisAnalysisPipeline
+from src.query_engine import QueryEngine
+from src.llm_query import LLMQueryInterface
+from src.timelapse import find_timelapse_images, get_timelapse_summary, extract_date_from_filename
+from src.timeseries_db import TimeseriesDB
 
 
 # Custom CSS for industrial aesthetic
@@ -506,6 +510,218 @@ def main():
                             )
         else:
             st.warning("Need at least 2 images for change detection. Add more images to the data folder.")
+    
+    # Time-Lapse Analysis Section
+    st.markdown("---")
+    st.markdown("### ⏱️ Time-Lapse Analysis")
+    
+    # Check if timelapse data exists
+    timelapse_summary = get_timelapse_summary()
+    
+    if timelapse_summary['total_images'] > 0:
+        timelapse_tab1, timelapse_tab2, timelapse_tab3 = st.tabs([
+            "📊 Timeline Charts",
+            "🔍 Natural Language Query",
+            "🖼️ Image Comparison"
+        ])
+        
+        with timelapse_tab1:
+            st.markdown("#### Date Range Selection")
+            
+            # Get date range from data
+            if timelapse_summary['date_range']:
+                start_date = datetime.fromisoformat(timelapse_summary['date_range']['start']).date()
+                end_date = datetime.fromisoformat(timelapse_summary['date_range']['end']).date()
+                
+                col_d1, col_d2 = st.columns(2)
+                with col_d1:
+                    selected_start = st.date_input(
+                        "Start Date",
+                        value=start_date,
+                        min_value=start_date,
+                        max_value=end_date,
+                    )
+                with col_d2:
+                    selected_end = st.date_input(
+                        "End Date",
+                        value=end_date,
+                        min_value=selected_start,
+                        max_value=end_date,
+                    )
+                
+                # Query timeline data
+                engine = QueryEngine()
+                timeline = engine.query('timeline', date_range=(selected_start.isoformat(), selected_end.isoformat()))
+                
+                if timeline['values']:
+                    # Volume chart
+                    fig_volume = go.Figure()
+                    fig_volume.add_trace(go.Scatter(
+                        x=timeline['dates'],
+                        y=timeline['values'],
+                        mode='lines+markers',
+                        name='Volume (m³)',
+                        line=dict(color='#e94560', width=3),
+                        marker=dict(size=10),
+                    ))
+                    fig_volume.update_layout(
+                        title='Volume Over Time',
+                        xaxis_title='Date',
+                        yaxis_title='Volume (m³)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='white'),
+                        height=400,
+                    )
+                    st.plotly_chart(fig_volume, use_container_width=True)
+                    
+                    # Summary metrics
+                    col_v1, col_v2, col_v3 = st.columns(3)
+                    with col_v1:
+                        st.metric("Total Images", len(timeline['dates']))
+                    with col_v2:
+                        max_vol = max(timeline['values'])
+                        st.metric("Peak Volume", f"{max_vol:.1f} m³")
+                    with col_v3:
+                        avg_vol = sum(timeline['values']) / len(timeline['values'])
+                        st.metric("Avg Volume", f"{avg_vol:.1f} m³")
+                    
+                    # Changes summary
+                    changes = engine.query('changes', date_range=(selected_start.isoformat(), selected_end.isoformat()))
+                    if changes.get('summary'):
+                        st.markdown("#### Change Summary")
+                        col_c1, col_c2, col_c3 = st.columns(3)
+                        with col_c1:
+                            st.metric("Arrivals", changes['summary'].get('arrivals', 0))
+                        with col_c2:
+                            st.metric("Departures", changes['summary'].get('departures', 0))
+                        with col_c3:
+                            net = changes['summary'].get('net_change', 0)
+                            st.metric("Net Change", net, delta=f"{'+' if net >= 0 else ''}{net}")
+                else:
+                    st.info("No data available for selected date range.")
+        
+        with timelapse_tab2:
+            st.markdown("#### Natural Language Query")
+            st.markdown("Ask questions about the timelapse data in plain English.")
+            
+            query_text = st.text_input(
+                "Enter your question",
+                placeholder="e.g., How many containers between 2019 and 2021?",
+                key="nl_query"
+            )
+            
+            if st.button("🔍 Query", type="primary"):
+                if query_text:
+                    with st.spinner("Processing query..."):
+                        interface = LLMQueryInterface()
+                        result = interface.query(query_text)
+                        
+                        if 'error' in result:
+                            st.error(result['error'])
+                            if 'suggestions' in result:
+                                st.info("Try these queries:")
+                                for suggestion in result['suggestions']:
+                                    st.code(suggestion)
+                        else:
+                            st.success(f"**Interpretation:** {result['interpretation']}")
+                            
+                            # Display results
+                            if 'result' in result:
+                                res = result['result']
+                                
+                                if 'summary' in res:
+                                    # Change query result
+                                    summary = res['summary']
+                                    col1, col2, col3 = st.columns(3)
+                                    with col1:
+                                        st.metric("Total Changes", summary.get('total_changes', 0))
+                                    with col2:
+                                        st.metric("Arrivals", summary.get('arrivals', 0))
+                                    with col3:
+                                        st.metric("Departures", summary.get('departures', 0))
+                                
+                                elif 'estimated_value' in res:
+                                    # Revenue query result
+                                    st.metric("Estimated Value", f"${res['estimated_value']:,.0f}")
+                                    st.info(f"Confidence: {res.get('confidence', 'unknown')}")
+                                    if res.get('breakdown'):
+                                        st.markdown("**Breakdown:**")
+                                        for material, data in res['breakdown'].items():
+                                            if isinstance(data, dict) and 'value' in data:
+                                                st.write(f"- {material}: ${data['value']:,.0f}")
+                                
+                                elif 'snapshots' in res:
+                                    # Inventory/timeline query result
+                                    st.metric("Snapshots", len(res['snapshots']))
+                                    if res['snapshots']:
+                                        st.dataframe(res['snapshots'][:10], use_container_width=True)
+                                
+                                else:
+                                    st.json(res)
+        
+        with timelapse_tab3:
+            st.markdown("#### Side-by-Side Image Comparison")
+            
+            images = find_timelapse_images()
+            if len(images) >= 2:
+                image_options = [(f"{dt.strftime('%Y-%m')}: {img_path.name}", img_path) 
+                                for img_path, dt in images]
+                
+                col_i1, col_i2 = st.columns(2)
+                
+                with col_i1:
+                    selected1 = st.selectbox(
+                        "Image 1",
+                        options=[opt[0] for opt in image_options],
+                        index=0,
+                        key="timelapse_img1"
+                    )
+                    img1_path = image_options[[opt[0] for opt in image_options].index(selected1)][1]
+                    img1 = cv2.imread(str(img1_path))
+                    if img1 is not None:
+                        st.image(numpy_to_streamlit(img1), caption=selected1, use_container_width=True)
+                
+                with col_i2:
+                    selected2 = st.selectbox(
+                        "Image 2",
+                        options=[opt[0] for opt in image_options],
+                        index=min(1, len(image_options)-1),
+                        key="timelapse_img2"
+                    )
+                    img2_path = image_options[[opt[0] for opt in image_options].index(selected2)][1]
+                    img2 = cv2.imread(str(img2_path))
+                    if img2 is not None:
+                        st.image(numpy_to_streamlit(img2), caption=selected2, use_container_width=True)
+                
+                if st.button("📊 Compare", use_container_width=True):
+                    with st.spinner("Analyzing changes..."):
+                        engine = QueryEngine()
+                        
+                        # Get dates
+                        date1 = extract_date_from_filename(img1_path.name)
+                        date2 = extract_date_from_filename(img2_path.name)
+                        
+                        if date1 and date2:
+                            changes = engine.query('changes', date_range=(date1.isoformat(), date2.isoformat()))
+                            
+                            if changes.get('changes'):
+                                change = changes['changes'][0] if changes['changes'] else {}
+                                
+                                col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+                                with col_c1:
+                                    st.metric("Volume Change", f"{change.get('volume_change_m3', 0):+.1f} m³")
+                                with col_c2:
+                                    st.metric("Area Change", f"{change.get('area_change_m2', 0):+.1f} m²")
+                                with col_c3:
+                                    st.metric("Tonnage Change", f"{change.get('tonnage_change', 0):+.1f} tons")
+                                with col_c4:
+                                    st.metric("Days Apart", change.get('days_apart', 0))
+            else:
+                st.warning("Need at least 2 timelapse images for comparison.")
+    else:
+        st.info("No timelapse data found. Process EDCO images to enable time-lapse analysis.")
+        st.code("python -m src.batch_processor", language="bash")
     
     # Footer
     st.markdown("---")
