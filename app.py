@@ -497,9 +497,13 @@ def main():
         with col_e4:
             net = changes['summary'].get('net_change', 0) if changes.get('summary') else 0
             # Ensure delta is numeric, not string or None
-            net_delta = float(net) if net is not None and net != 0 else None
             net_val = int(net) if net is not None else 0
-            st.metric("Net Change", net_val, delta=net_delta)
+            # Only pass delta if it's a valid number
+            if net is not None and net != 0:
+                net_delta = float(net)
+                st.metric("Net Change", net_val, delta=net_delta)
+            else:
+                st.metric("Net Change", net_val)
     
     # Trend Chart
     st.markdown("---")
@@ -514,9 +518,12 @@ def main():
         with col_t2:
             recent_trend = timeline['values'][-1] - timeline['values'][-2]
             recent_trend_val = float(recent_trend) if recent_trend is not None else 0.0
-            # Ensure delta is numeric
-            volume_delta = float(recent_trend) if recent_trend is not None and abs(recent_trend) > 100 else None
-            st.metric("Volume Change", f"{recent_trend_val:.0f} m³", delta=volume_delta)
+            # Only pass delta if it's a valid number
+            if recent_trend is not None and abs(recent_trend) > 100:
+                volume_delta = float(recent_trend)
+                st.metric("Volume Change", f"{recent_trend_val:.0f} m³", delta=volume_delta)
+            else:
+                st.metric("Volume Change", f"{recent_trend_val:.0f} m³")
         with col_t3:
             if len(timeline['values']) >= 2:
                 first_vol = timeline['values'][0]
@@ -524,8 +531,12 @@ def main():
                 total_change = ((last_vol - first_vol) / first_vol * 100) if first_vol > 0 else 0
                 # Ensure all values are numeric
                 total_change_val = float(total_change) if total_change is not None else 0.0
-                change_delta = float(total_change) if total_change is not None and abs(total_change) > 0.1 else None
-                st.metric("Total Change", f"{total_change_val:+.1f}%", delta=change_delta)
+                # Only pass delta if it's a valid number
+                if total_change is not None and abs(total_change) > 0.1:
+                    change_delta = float(total_change)
+                    st.metric("Total Change", f"{total_change_val:+.1f}%", delta=change_delta)
+                else:
+                    st.metric("Total Change", f"{total_change_val:+.1f}%")
         
         # Chart
         fig = go.Figure()
