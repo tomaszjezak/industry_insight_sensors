@@ -80,9 +80,12 @@ st.markdown("""
 
 
 def numpy_to_streamlit(img: np.ndarray) -> np.ndarray:
-    """Convert BGR to RGB."""
+    """Convert BGR to RGB, preserving quality."""
     if img is None:
         return None
+    # Ensure we're working with uint8 for best quality
+    if img.dtype != np.uint8:
+        img = np.clip(img, 0, 255).astype(np.uint8)
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
@@ -293,10 +296,21 @@ def main():
         for idx, (img_path, img_date) in enumerate(images_in_range):
             col_idx = idx % num_cols
             with cols[col_idx]:
-                # Load and resize thumbnail
+                # Load and resize thumbnail with high quality
                 thumb = cv2.imread(str(img_path))
                 if thumb is not None:
-                    thumb_resized = cv2.resize(thumb, (200, 150))
+                    # Preserve aspect ratio, make larger thumbnails
+                    h, w = thumb.shape[:2]
+                    max_dim = 400  # Larger thumbnails for better quality
+                    if w > h:
+                        new_w = max_dim
+                        new_h = int(h * (max_dim / w))
+                    else:
+                        new_h = max_dim
+                        new_w = int(w * (max_dim / h))
+                    
+                    # Use high-quality interpolation
+                    thumb_resized = cv2.resize(thumb, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
                     st.image(numpy_to_streamlit(thumb_resized), 
                             caption=img_date.strftime('%B %Y'), 
                             use_container_width=True)
