@@ -262,21 +262,35 @@ def main():
         image = cv2.imread(str(img_path))
         
         if image is not None:
-            # Try to get analysis result
+            # Use cached results from database - NO SLOW MODEL LOADING!
             analysis_result = None
-            try:
-                pipeline = DebrisAnalysisPipeline()
-                analysis_result = pipeline.analyze(image)
-            except:
-                # Fallback: create basic result from database
-                if latest_img:
-                    analysis_result = {
-                        'volume': {
-                            'volume_m3': latest_img.get('volume_m3', 0),
-                            'tonnage_estimate': latest_img.get('tonnage_estimate', 0),
-                        },
-                        'containers': [],  # Would need to query containers table
+            if latest_img:
+                # Get containers from database
+                containers = db.get_containers_by_date_range(selected_end.isoformat()[:10], selected_end.isoformat()[:10])
+                container_list = [c for c in containers if c['image_id'] == latest_img['id']]
+                
+                # Create result from database (already processed)
+                analysis_result = {
+                    'volume': {
+                        'volume_m3': latest_img.get('volume_m3', 0) or 0,
+                        'tonnage_estimate': latest_img.get('tonnage_estimate', 0) or 0,
+                    },
+                    'containers': container_list,
+                    'segmentation': {
+                        'mask': None,  # We'll get this from a simple segmentation if needed
                     }
+                }
+                
+                # Try to get segmentation mask - use simple method if not cached
+                # For Street View images, use fixed camera height (3-5m typical)
+                STREETVIEW_CAMERA_HEIGHT = 4.0  # Typical Google Street View height
+                
+                # Simple segmentation for visualization (fast, no SAM/MiDaS)
+                from src.segmentation import PileSegmenter
+                segmenter = PileSegmenter(use_sam=False)  # Fast OpenCV method
+                seg_result = segmenter.segment(image)
+                if seg_result and 'mask' in seg_result:
+                    analysis_result['segmentation']['mask'] = seg_result['mask']
             
             # Draw AI overlays (segmentation outlines, containers, metrics)
             overlay_image = draw_ai_overlay(image, analysis_result)

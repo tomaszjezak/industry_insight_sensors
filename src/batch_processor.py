@@ -113,12 +113,15 @@ class BatchProcessor:
         
         h, w = image.shape[:2]
         
-        # Estimate or use default camera height
+        # For EDCO Street View images, use fixed Street View camera height
+        # Google Street View cameras are typically 3-5m high
+        STREETVIEW_CAMERA_HEIGHT = 4.0  # Fixed height for Street View
+        
         if self.auto_height:
-            height_result = self.height_estimator.estimate(image)
-            camera_height = height_result['estimated_height_m']
+            # Use Street View height instead of estimating
+            camera_height = STREETVIEW_CAMERA_HEIGHT
         else:
-            camera_height = 30.0
+            camera_height = STREETVIEW_CAMERA_HEIGHT
         
         # Initialize pipeline
         pipeline = DebrisAnalysisPipeline(

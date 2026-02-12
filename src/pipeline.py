@@ -86,12 +86,11 @@ class DebrisAnalysisPipeline:
         timestamp = timestamp or datetime.now()
         h, w = image.shape[:2]
         
-        # Auto-estimate camera height if not set
+        # For Street View images, use fixed height (no slow estimation)
         if self.auto_height:
-            print("[0/5] Estimating camera height...")
-            height_result = self.height_estimator.estimate(image)
-            camera_height = height_result['estimated_height_m']
-            print(f"      Estimated: {camera_height}m ({height_result['recommendation']})")
+            # Google Street View cameras are typically 3-5m high
+            camera_height = 4.0  # Fixed Street View height
+            print(f"[0/5] Using Street View camera height: {camera_height}m")
             self.volume_calculator = VolumeCalculator(camera_height_m=camera_height)
         else:
             camera_height = self.camera_height_m
