@@ -431,29 +431,29 @@ def main():
         """, unsafe_allow_html=True)
         
         if timeline_data and len(timeline_data) >= 2:
-                first = timeline_data[0]
-                last = timeline_data[-1]
-                days = (datetime.fromisoformat(last['date']) - datetime.fromisoformat(first['date'])).days
-                
-                throughput = calculate_throughput(
-                    first.get('tonnage', 0),
-                    last.get('tonnage', 0),
-                    max(1, days)
-                )
-                
-                if changes.get('summary'):
-                    arrivals = changes['summary'].get('arrivals', 0)
-                    departures = changes['summary'].get('departures', 0)
-                    net_change = changes['summary'].get('net_change', 0)
-                else:
-                    arrivals = departures = net_change = 0
-                
-                st.metric("Throughput", f"{throughput:.1f} tons/day")
-                st.metric("Arrivals", f"{arrivals}", delta=f"+{arrivals}")
-                st.metric("Departures", f"{departures}", delta=f"-{departures}")
-                st.metric("Net Change", f"{net_change:+d}", delta=f"{net_change:+d}")
+            first = timeline_data[0]
+            last = timeline_data[-1]
+            days = (datetime.fromisoformat(last['date']) - datetime.fromisoformat(first['date'])).days
+            
+            throughput = calculate_throughput(
+                first.get('tonnage', 0),
+                last.get('tonnage', 0),
+                max(1, days)
+            )
+            
+            if changes.get('summary'):
+                arrivals = changes['summary'].get('arrivals', 0)
+                departures = changes['summary'].get('departures', 0)
+                net_change = changes['summary'].get('net_change', 0)
             else:
-                st.info("Insufficient data for efficiency metrics")
+                arrivals = departures = net_change = 0
+            
+            st.metric("Throughput", f"{throughput:.1f} tons/day")
+            st.metric("Arrivals", f"{arrivals}", delta=f"+{arrivals}")
+            st.metric("Departures", f"{departures}", delta=f"-{departures}")
+            st.metric("Net Change", f"{net_change:+d}", delta=f"{net_change:+d}")
+        else:
+            st.info("Insufficient data for efficiency metrics")
         
         # D. Safety & Compliance Monitoring (Middle Right)
         st.markdown("""
@@ -463,28 +463,28 @@ def main():
         """, unsafe_allow_html=True)
         
         if snapshots:
-                latest = snapshots[-1]
-                volume = latest.get('volume_m3', 0)
-                area = latest.get('area_m2', 0)
-                
-                housekeeping = calculate_housekeeping_score(volume, area)
-                
-                # Compliance status
-                if housekeeping >= 85:
-                    compliance_status = "✓ Compliant"
-                    compliance_color = "#228B22"
-                elif housekeeping >= 70:
-                    compliance_status = "⚠️ Moderate"
-                    compliance_color = "#FFA500"
-                else:
-                    compliance_status = "⚠️ Needs Attention"
-                    compliance_color = "#FF4500"
-                
-                st.metric("Housekeeping", f"{housekeeping:.0f}%")
-                st.markdown(f'<div style="color: {compliance_color}; font-weight: 600;">{compliance_status}</div>', unsafe_allow_html=True)
-                st.metric("Hazard Alerts", "0", delta="None detected")
+            latest = snapshots[-1]
+            volume = latest.get('volume_m3', 0)
+            area = latest.get('area_m2', 0)
+            
+            housekeeping = calculate_housekeeping_score(volume, area)
+            
+            # Compliance status
+            if housekeeping >= 85:
+                compliance_status = "✓ Compliant"
+                compliance_color = "#228B22"
+            elif housekeeping >= 70:
+                compliance_status = "⚠️ Moderate"
+                compliance_color = "#FFA500"
             else:
-                st.info("Safety data not available")
+                compliance_status = "⚠️ Needs Attention"
+                compliance_color = "#FF4500"
+            
+            st.metric("Housekeeping", f"{housekeeping:.0f}%")
+            st.markdown(f'<div style="color: {compliance_color}; font-weight: 600;">{compliance_status}</div>', unsafe_allow_html=True)
+            st.metric("Hazard Alerts", "0", delta="None detected")
+        else:
+            st.info("Safety data not available")
         
         # Image Display (Center, Full Width)
         st.markdown('<div class="image-section">', unsafe_allow_html=True)
