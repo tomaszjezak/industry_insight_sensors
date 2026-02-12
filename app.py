@@ -1,5 +1,6 @@
 """
-EDCO Insights Dashboard - Clean Professional Design
+EDCO Insights Dashboard - AI-Enhanced Visual Monitoring
+Inspired by industrial AI monitoring systems with overlays and alerts.
 """
 
 import streamlit as st
@@ -22,43 +23,45 @@ st.set_page_config(
 from src.query_engine import QueryEngine
 from src.timelapse import find_timelapse_images, get_timelapse_summary
 from src.timeseries_db import TimeseriesDB
+from src.pipeline import DebrisAnalysisPipeline
 
 
-# Clean CSS
+# AI Monitoring Style CSS
 st.markdown("""
 <style>
     .stApp {
-        background: #f8f9fa !important;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #1a1a1a !important;
+        font-family: 'Segoe UI', -apple-system, sans-serif;
     }
     
     .header {
-        background: #228B22;
+        background: linear-gradient(135deg, #228B22 0%, #1a5f1a 100%);
         color: white;
-        padding: 15px 30px;
-        margin: -1rem -1rem 1rem -1rem;
+        padding: 20px 30px;
+        margin: -1rem -1rem 2rem -1rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
     
-    .metric-box {
-        background: white;
-        padding: 20px;
+    .alert-box {
+        background: #FF0000;
+        color: white;
+        padding: 15px 20px;
         border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin-bottom: 15px;
+        margin: 15px 0;
+        box-shadow: 0 4px 8px rgba(255,0,0,0.3);
+        border-left: 5px solid #FFD700;
+        font-weight: 600;
     }
     
-    .metric-label {
-        font-size: 0.85em;
-        color: #666;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 5px;
-    }
-    
-    .metric-value {
-        font-size: 2em;
-        font-weight: 700;
-        color: #228B22;
+    .metric-overlay {
+        background: rgba(34, 139, 34, 0.9);
+        color: white;
+        padding: 10px 15px;
+        border-radius: 6px;
+        display: inline-block;
+        margin: 5px;
+        font-weight: 600;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
     
     #MainMenu {visibility: hidden;}
@@ -75,14 +78,68 @@ def numpy_to_streamlit(img: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
-def calculate_storage_utilization(current_volume: float, historical_volumes: list) -> float:
-    """Calculate storage utilization %."""
-    if not historical_volumes:
-        return 0
-    max_volume = max(historical_volumes) * 1.2
-    if max_volume == 0:
-        return 0
-    return min(100, (current_volume / max_volume) * 100)
+def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None, alerts: list = None) -> np.ndarray:
+    """
+    Draw AI monitoring overlays on image - bounding boxes, alerts, metrics.
+    Inspired by industrial AI monitoring systems.
+    """
+    overlay = image.copy()
+    h, w = overlay.shape[:2]
+    
+    # Draw containers with bounding boxes (green)
+    if analysis_result and 'containers' in analysis_result:
+        for container in analysis_result.get('containers', []):
+            if 'bbox' in container:
+                bbox = np.array(container['bbox'], dtype=np.int32)
+                # Draw green bounding box
+                cv2.drawContours(overlay, [bbox], -1, (0, 255, 0), 3)
+                
+                # Add label
+                cx, cy = container.get('centroid', (0, 0))
+                label = f"Container: {container.get('type', 'unknown')}"
+                cv2.putText(overlay, label, (cx - 80, cy - 10),
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+    
+    # Draw alert boxes (red warning boxes)
+    if alerts:
+        y_offset = 50
+        for alert in alerts:
+            # Draw red alert box
+            box_height = 60
+            box_width = 400
+            cv2.rectangle(overlay, (20, y_offset), (20 + box_width, y_offset + box_height),
+                         (0, 0, 255), -1)
+            cv2.rectangle(overlay, (20, y_offset), (20 + box_width, y_offset + box_height),
+                         (255, 215, 0), 3)
+            
+            # Alert text
+            cv2.putText(overlay, "!", (35, y_offset + 45),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
+            cv2.putText(overlay, alert, (70, y_offset + 40),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+            
+            y_offset += box_height + 10
+    
+    # Draw metrics overlay (green boxes in corner)
+    if analysis_result:
+        metrics = []
+        if 'volume' in analysis_result:
+            vol = analysis_result['volume'].get('volume_m3', 0)
+            metrics.append(f"VOLUME: {vol:.0f} m³")
+        if 'volume' in analysis_result:
+            tons = analysis_result['volume'].get('tonnage_estimate', 0)
+            metrics.append(f"TONNAGE: {tons:.1f} tons")
+        
+        y_pos = h - 100
+        for metric in metrics:
+            (text_width, text_height), _ = cv2.getTextSize(metric, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+            cv2.rectangle(overlay, (w - text_width - 30, y_pos - 25),
+                         (w - 10, y_pos + 5), (34, 139, 34), -1)
+            cv2.putText(overlay, metric, (w - text_width - 20, y_pos),
+                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            y_pos -= 35
+    
+    return overlay
 
 
 def calculate_purity_score(materials: dict) -> float:
@@ -94,60 +151,14 @@ def calculate_purity_score(materials: dict) -> float:
     return max(dominant_pct, 100 - mixed_pct)
 
 
-def calculate_throughput(start_tonnage: float, end_tonnage: float, days: int) -> float:
-    """Calculate throughput rate."""
-    if days <= 0:
-        return 0
-    return (end_tonnage - start_tonnage) / days
-
-
-def calculate_housekeeping_score(volume: float, area: float) -> float:
-    """Calculate housekeeping score."""
-    if area == 0:
-        return 0
-    ratio = volume / area
-    if ratio > 10:
-        return 95
-    elif ratio > 5:
-        return 85
-    elif ratio > 2:
-        return 70
-    else:
-        return 50
-
-
-def simple_forecast(values: list, days_ahead: int = 7) -> float:
-    """Simple linear forecast."""
-    if len(values) < 2:
-        return values[-1] if values else 0
-    
-    n = min(3, len(values))
-    recent = values[-n:]
-    x = list(range(n))
-    
-    x_mean = sum(x) / n
-    y_mean = sum(recent) / n
-    
-    numerator = sum((x[i] - x_mean) * (recent[i] - y_mean) for i in range(n))
-    denominator = sum((x[i] - x_mean) ** 2 for i in range(n))
-    
-    if denominator == 0:
-        return recent[-1]
-    
-    slope = numerator / denominator
-    intercept = y_mean - slope * x_mean
-    
-    forecast_x = n + days_ahead
-    forecast_y = slope * forecast_x + intercept
-    
-    return max(0, forecast_y)
-
-
 def main():
     # Header
     st.markdown("""
     <div class="header">
-        <h1 style="margin:0; font-size: 1.8em;">♻️ EDCO Insights - Site 38782</h1>
+        <h1 style="margin:0; font-size: 2em; display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.5em;">♻️</span> EDCO Insights - Site 38782
+            <span style="margin-left: auto; font-size: 0.6em; opacity: 0.9;">AI-Powered Monitoring</span>
+        </h1>
     </div>
     """, unsafe_allow_html=True)
     
@@ -167,12 +178,15 @@ def main():
         start_date = date(2015, 1, 1)
         end_date = date.today()
     
-    st.markdown("### 📅 Date Range")
-    col_d1, col_d2 = st.columns(2)
+    col_d1, col_d2 = st.columns([1, 4])
     with col_d1:
-        selected_start = st.date_input("From", value=start_date, min_value=start_date, max_value=end_date, key="date_start")
+        st.markdown("### 📅 Date Range")
     with col_d2:
-        selected_end = st.date_input("To", value=end_date, min_value=selected_start if isinstance(selected_start, date) else start_date, max_value=end_date, key="date_end")
+        col_da, col_db = st.columns(2)
+        with col_da:
+            selected_start = st.date_input("From", value=start_date, min_value=start_date, max_value=end_date, key="date_start", label_visibility="collapsed")
+        with col_db:
+            selected_end = st.date_input("To", value=end_date, min_value=selected_start if isinstance(selected_start, date) else start_date, max_value=end_date, key="date_end", label_visibility="collapsed")
     
     if isinstance(selected_start, tuple):
         selected_start = selected_start[0]
@@ -191,35 +205,9 @@ def main():
         st.info("No data for selected date range")
         return
     
-    # Main Metrics - 4 columns
-    st.markdown("---")
-    st.markdown("### Key Metrics")
+    latest = snapshots[-1]
     
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        latest = snapshots[-1]
-        st.metric("Containers", latest.get('containers', 0))
-        st.caption("Active containers")
-    
-    with col2:
-        st.metric("Tonnage", f"{latest.get('tonnage', 0):.1f}")
-        st.caption("Total tons")
-    
-    with col3:
-        all_volumes = [s.get('volume_m3', 0) for s in snapshots]
-        utilization = calculate_storage_utilization(latest.get('volume_m3', 0), all_volumes)
-        st.metric("Storage", f"{utilization:.0f}%")
-        st.caption("Yard utilization")
-    
-    with col4:
-        st.metric("Volume", f"{latest.get('volume_m3', 0):.0f}")
-        st.caption("Cubic meters")
-    
-    # Material Quality
-    st.markdown("---")
-    st.markdown("### Material Quality")
-    
+    # Get analysis result for latest image
     db = TimeseriesDB()
     images = db.get_all_images()
     latest_img = None
@@ -228,87 +216,25 @@ def main():
             latest_img = img
             break
     
-    col_m1, col_m2 = st.columns([2, 1])
-    
-    with col_m1:
-        if latest_img and latest_img.get('materials_json'):
-            materials = json.loads(latest_img['materials_json'])
-            st.markdown("**Composition:**")
-            for material, pct in materials.items():
-                st.progress(pct / 100, text=f"{material.capitalize()}: {pct:.1f}%")
-        else:
-            st.info("Material data not available")
-    
-    with col_m2:
-        if latest_img and latest_img.get('materials_json'):
-            materials = json.loads(latest_img['materials_json'])
-            purity = calculate_purity_score(materials)
-            contamination = materials.get('mixed', 0)
-            
-            st.metric("Purity", f"{purity:.0f}%")
-            if contamination > 20:
-                st.error(f"⚠️ High contamination: {contamination:.1f}%")
-            else:
-                st.success(f"✓ Clean: {contamination:.1f}% mixed")
-    
-    # Operational Efficiency
-    st.markdown("---")
-    st.markdown("### Operational Efficiency")
-    
-    if timeline_data and len(timeline_data) >= 2:
-        first = timeline_data[0]
-        last = timeline_data[-1]
-        days = (datetime.fromisoformat(last['date']) - datetime.fromisoformat(first['date'])).days
+    # Collect alerts
+    alerts = []
+    if latest_img and latest_img.get('materials_json'):
+        materials = json.loads(latest_img['materials_json'])
+        contamination = materials.get('mixed', 0)
+        if contamination > 20:
+            alerts.append(f"HIGH CONTAMINATION: {contamination:.1f}%")
         
-        throughput = calculate_throughput(first.get('tonnage', 0), last.get('tonnage', 0), max(1, days))
-        
-        col_e1, col_e2, col_e3, col_e4 = st.columns(4)
-        
-        with col_e1:
-            st.metric("Throughput", f"{throughput:.1f}")
-            st.caption("Tons per day")
-        
-        with col_e2:
-            arrivals = changes['summary'].get('arrivals', 0) if changes.get('summary') else 0
-            st.metric("Arrivals", arrivals)
-            st.caption("Containers/pallets")
-        
-        with col_e3:
-            departures = changes['summary'].get('departures', 0) if changes.get('summary') else 0
-            st.metric("Departures", departures)
-            st.caption("Containers/pallets")
-        
-        with col_e4:
-            net = changes['summary'].get('net_change', 0) if changes.get('summary') else 0
-            st.metric("Net Change", net, delta=net)
-            st.caption("Net change")
+        purity = calculate_purity_score(materials)
+        if purity < 70:
+            alerts.append(f"LOW PURITY SCORE: {purity:.0f}%")
     
-    # Safety & Compliance
-    st.markdown("---")
-    st.markdown("### Safety & Compliance")
+    # Show alerts
+    if alerts:
+        for alert in alerts:
+            st.markdown(f'<div class="alert-box">⚠️ {alert}</div>', unsafe_allow_html=True)
     
-    volume = latest.get('volume_m3', 0)
-    area = latest.get('area_m2', 0)
-    housekeeping = calculate_housekeeping_score(volume, area)
-    
-    col_s1, col_s2 = st.columns(2)
-    
-    with col_s1:
-        st.metric("Housekeeping", f"{housekeeping:.0f}%")
-        if housekeeping >= 85:
-            st.success("✓ Compliant")
-        elif housekeeping >= 70:
-            st.warning("⚠️ Moderate")
-        else:
-            st.error("⚠️ Needs Attention")
-    
-    with col_s2:
-        st.metric("Hazard Alerts", 0)
-        st.caption("No hazards detected")
-    
-    # Images
-    st.markdown("---")
-    st.markdown("### Site Images")
+    # Main Image with AI Overlays
+    st.markdown("### 🎯 Live Site Monitoring")
     
     images = find_timelapse_images()
     images_in_range = [
@@ -317,41 +243,120 @@ def main():
     ]
     
     if images_in_range:
-        col_i1, col_i2 = st.columns(2)
+        # Get latest image
+        img_path, img_date = images_in_range[-1]
+        image = cv2.imread(str(img_path))
         
-        with col_i1:
-            img1_path, date1 = images_in_range[0]
-            img1 = cv2.imread(str(img1_path))
-            if img1 is not None:
-                st.image(numpy_to_streamlit(img1), caption=f"{date1.strftime('%B %Y')}", use_container_width=True)
+        if image is not None:
+            # Try to get analysis result
+            analysis_result = None
+            try:
+                pipeline = DebrisAnalysisPipeline()
+                analysis_result = pipeline.analyze(image)
+            except:
+                # Fallback: create basic result from database
+                if latest_img:
+                    analysis_result = {
+                        'volume': {
+                            'volume_m3': latest_img.get('volume_m3', 0),
+                            'tonnage_estimate': latest_img.get('tonnage_estimate', 0),
+                        },
+                        'containers': [],  # Would need to query containers table
+                    }
+            
+            # Draw AI overlays
+            overlay_image = draw_ai_overlay(image, analysis_result, alerts)
+            
+            col_img1, col_img2 = st.columns([2, 1])
+            
+            with col_img1:
+                st.image(numpy_to_streamlit(overlay_image), caption=f"AI-Enhanced View - {img_date.strftime('%B %Y')}", use_container_width=True)
+            
+            with col_img2:
+                st.markdown("#### 📊 Real-Time Metrics")
+                
+                st.metric("Containers", latest.get('containers', 0))
+                st.metric("Tonnage", f"{latest.get('tonnage', 0):.1f} tons")
+                st.metric("Volume", f"{latest.get('volume_m3', 0):.0f} m³")
+                
+                if latest_img and latest_img.get('materials_json'):
+                    materials = json.loads(latest_img['materials_json'])
+                    purity = calculate_purity_score(materials)
+                    st.metric("Purity", f"{purity:.0f}%")
+    
+    # Material Quality Section
+    st.markdown("---")
+    st.markdown("### 🧱 Material Analysis")
+    
+    if latest_img and latest_img.get('materials_json'):
+        materials = json.loads(latest_img['materials_json'])
         
-        with col_i2:
-            if len(images_in_range) > 1:
-                img2_path, date2 = images_in_range[-1]
-                img2 = cv2.imread(str(img2_path))
-                if img2 is not None:
-                    st.image(numpy_to_streamlit(img2), caption=f"{date2.strftime('%B %Y')}", use_container_width=True)
+        col_m1, col_m2 = st.columns([2, 1])
+        
+        with col_m1:
+            st.markdown("**Composition Breakdown:**")
+            for material, pct in materials.items():
+                st.progress(pct / 100, text=f"{material.capitalize()}: {pct:.1f}%")
+        
+        with col_m2:
+            purity = calculate_purity_score(materials)
+            contamination = materials.get('mixed', 0)
+            
+            st.metric("Purity Score", f"{purity:.0f}%")
+            if contamination > 20:
+                st.error(f"⚠️ High contamination: {contamination:.1f}%")
+            else:
+                st.success(f"✓ Clean: {contamination:.1f}% mixed")
+    
+    # Operational Metrics
+    st.markdown("---")
+    st.markdown("### ⚙️ Operational Efficiency")
+    
+    if timeline_data and len(timeline_data) >= 2:
+        first = timeline_data[0]
+        last = timeline_data[-1]
+        days = (datetime.fromisoformat(last['date']) - datetime.fromisoformat(first['date'])).days
+        
+        if days > 0:
+            throughput = (last.get('tonnage', 0) - first.get('tonnage', 0)) / days
+        else:
+            throughput = 0
+        
+        col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+        
+        with col_e1:
+            st.metric("Throughput", f"{throughput:.1f} tons/day")
+        
+        with col_e2:
+            arrivals = changes['summary'].get('arrivals', 0) if changes.get('summary') else 0
+            st.metric("Arrivals", arrivals)
+        
+        with col_e3:
+            departures = changes['summary'].get('departures', 0) if changes.get('summary') else 0
+            st.metric("Departures", departures)
+        
+        with col_e4:
+            net = changes['summary'].get('net_change', 0) if changes.get('summary') else 0
+            st.metric("Net Change", net, delta=net)
     
     # Trend Chart
     st.markdown("---")
-    st.markdown("### Volume Trend")
+    st.markdown("### 📈 Volume Trend Analysis")
     
     if timeline.get('values') and len(timeline['values']) >= 2:
-        forecast = simple_forecast(timeline['values'], 7)
-        current = timeline['values'][-1]
-        forecast_delta = forecast - current
-        
         col_t1, col_t2, col_t3 = st.columns(3)
         with col_t1:
-            st.metric("7-Day Forecast", f"{forecast:.0f}", delta=forecast_delta if abs(forecast_delta) > 100 else None)
-            st.caption("Cubic meters")
+            current = timeline['values'][-1]
+            st.metric("Current Volume", f"{current:.0f} m³")
         with col_t2:
-            st.metric("Diversion Rate", "100%")
-            st.caption("Proxy estimate")
-        with col_t3:
             recent_trend = timeline['values'][-1] - timeline['values'][-2]
-            st.metric("Recent Change", f"{recent_trend:.0f}", delta=recent_trend if abs(recent_trend) > 100 else None)
-            st.caption("Cubic meters")
+            st.metric("Recent Change", f"{recent_trend:.0f} m³", delta=recent_trend if abs(recent_trend) > 100 else None)
+        with col_t3:
+            if len(timeline['values']) >= 2:
+                first_vol = timeline['values'][0]
+                last_vol = timeline['values'][-1]
+                total_change = ((last_vol - first_vol) / first_vol * 100) if first_vol > 0 else 0
+                st.metric("Total Change", f"{total_change:+.1f}%", delta=total_change)
         
         # Chart
         fig = go.Figure()
@@ -362,28 +367,18 @@ def main():
             name='Volume',
             line=dict(color='#228B22', width=3),
             marker=dict(size=8, color='#228B22'),
+            fill='tonexty',
+            fillcolor='rgba(34, 139, 34, 0.1)',
         ))
-        
-        if len(timeline['values']) >= 2:
-            x_numeric = list(range(len(timeline['dates'])))
-            z = np.polyfit(x_numeric, timeline['values'], 1)
-            p = np.poly1d(z)
-            trend_line = p(x_numeric)
-            fig.add_trace(go.Scatter(
-                x=timeline['dates'],
-                y=trend_line,
-                mode='lines',
-                name='Trend',
-                line=dict(color='#FF4500', width=2, dash='dash'),
-            ))
         
         fig.update_layout(
             height=400,
-            paper_bgcolor='white',
-            plot_bgcolor='#f8f9fa',
+            paper_bgcolor='#1a1a1a',
+            plot_bgcolor='#2a2a2a',
+            font=dict(color='white'),
             showlegend=False,
-            xaxis_title='Date',
-            yaxis_title='Volume (m³)',
+            xaxis=dict(gridcolor='#444'),
+            yaxis=dict(gridcolor='#444', title='Volume (m³)'),
         )
         
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
