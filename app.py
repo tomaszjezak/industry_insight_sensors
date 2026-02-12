@@ -195,36 +195,32 @@ def timestamp_to_date(ts: float) -> date:
 
 
 def create_date_slider(start_date: date, end_date: date, key_prefix: str = "date"):
-    """Create dual-pointer date range slider."""
-    start_ts = date_to_timestamp(start_date)
-    end_ts = date_to_timestamp(end_date)
-    
-    # Create two sliders side by side
+    """Create dual-pointer date range slider using date_input."""
     col1, col2 = st.columns(2)
     
     with col1:
-        start_val = st.slider(
+        start_date_selected = st.date_input(
             "Start Date",
-            min_value=start_ts,
-            max_value=end_ts,
-            value=start_ts,
-            step=86400.0,  # 1 day in seconds (float to match timestamp type)
+            value=start_date,
+            min_value=start_date,
+            max_value=end_date,
             key=f"{key_prefix}_start"
         )
-        start_date_selected = timestamp_to_date(start_val)
-        st.caption(f"Selected: {start_date_selected.strftime('%B %d, %Y')}")
     
     with col2:
-        end_val = st.slider(
+        end_date_selected = st.date_input(
             "End Date",
-            min_value=start_ts,
-            max_value=end_ts,
-            value=end_ts,
-            step=86400.0,  # 1 day in seconds (float to match timestamp type)
+            value=end_date,
+            min_value=start_date_selected if isinstance(start_date_selected, date) else start_date,
+            max_value=end_date,
             key=f"{key_prefix}_end"
         )
-        end_date_selected = timestamp_to_date(end_val)
-        st.caption(f"Selected: {end_date_selected.strftime('%B %d, %Y')}")
+    
+    # Handle tuple from date_input
+    if isinstance(start_date_selected, tuple):
+        start_date_selected = start_date_selected[0]
+    if isinstance(end_date_selected, tuple):
+        end_date_selected = end_date_selected[0]
     
     # Ensure start <= end
     if start_date_selected > end_date_selected:
@@ -375,14 +371,11 @@ def main():
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("Containers", container_count)
-                    st.metric("Tonnage", f"{current_tonnage:.1f}")
-                    st.text("tons")
+                    st.metric("Containers", f"{container_count}")
+                    st.metric("Tonnage", f"{current_tonnage:.1f} tons")
                 with col2:
-                    st.metric("Storage", f"{utilization:.0f}")
-                    st.text("percent")
-                    st.metric("Volume", f"{current_volume:.0f}")
-                    st.text("cubic meters")
+                    st.metric("Storage", f"{utilization:.0f}%", delta=trend_pct)
+                    st.metric("Volume", f"{current_volume:.0f} m³")
         
         # B. Material Quality & Contamination (Top Right)
         st.markdown("""
@@ -417,8 +410,7 @@ def main():
                         alert_class = "alert" if purity < 70 else "warning" if purity < 85 else ""
                         # Calculate purity delta (vs 85% target)
                         purity_delta = purity - 85
-                        st.metric("Purity Score", f"{purity:.0f}", delta=purity_delta if purity_delta != 0 else None)
-                        st.text("percent")
+                        st.metric("Purity Score", f"{purity:.0f}%", delta=purity_delta if abs(purity_delta) > 5 else None)
                     with col2:
                         if contamination > 20:
                             st.error(f"⚠️ High contamination: {contamination:.1f}%")
@@ -452,8 +444,7 @@ def main():
             else:
                 arrivals = departures = net_change = 0
             
-            st.metric("Throughput", f"{throughput:.1f}")
-            st.text("tons per day")
+            st.metric("Throughput", f"{throughput:.1f} tons/day")
             st.metric("Arrivals", arrivals, delta=arrivals if arrivals > 0 else None)
             st.metric("Departures", departures, delta=-departures if departures > 0 else None)
             st.metric("Net Change", net_change, delta=net_change)
@@ -485,8 +476,7 @@ def main():
                 compliance_status = "⚠️ Needs Attention"
                 compliance_color = "#FF4500"
             
-            st.metric("Housekeeping", f"{housekeeping:.0f}")
-            st.text("percent")
+            st.metric("Housekeeping", f"{housekeeping:.0f}%")
             st.markdown(f'<div style="color: {compliance_color}; font-weight: 600;">{compliance_status}</div>', unsafe_allow_html=True)
             st.metric("Hazard Alerts", 0)
         else:
@@ -536,23 +526,20 @@ def main():
             with col_pred1:
                 # Calculate absolute forecast change
                 forecast_delta = forecast - current
-                st.metric("7-Day Forecast", f"{forecast:.0f}", delta=forecast_delta if abs(forecast_delta) > 1 else None)
-                st.text("cubic meters")
+                st.metric("7-Day Forecast", f"{forecast:.0f} m³", delta=forecast_delta if abs(forecast_delta) > 100 else None)
             
             with col_pred2:
                 # Diversion rate proxy (assume all detected material is recyclable)
                 total_volume = sum(timeline['values'])
                 diversion_rate = 100  # Heuristic: all detected = recyclable
-                st.metric("Diversion Rate", f"{diversion_rate:.0f}")
-                st.text("percent")
+                st.metric("Diversion Rate", f"{diversion_rate:.0f}%")
             
             with col_pred3:
                 # Trend direction
                 if len(timeline['values']) >= 2:
                     recent_trend = timeline['values'][-1] - timeline['values'][-2]
-                    trend_value = f"{recent_trend:.0f}"
-                    st.metric("Trend", trend_value, delta=recent_trend if abs(recent_trend) > 1 else None)
-                    st.text("cubic meters")
+                    trend_value = f"{recent_trend:.0f} m³"
+                    st.metric("Trend", trend_value, delta=recent_trend if abs(recent_trend) > 100 else None)
             
             # Trend Chart
             fig = go.Figure()
