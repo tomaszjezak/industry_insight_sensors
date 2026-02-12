@@ -209,11 +209,10 @@ def create_date_slider(start_date: date, end_date: date, key_prefix: str = "date
             max_value=end_ts,
             value=start_ts,
             step=86400.0,  # 1 day in seconds (float to match timestamp type)
-            format="%Y-%m-%d",
             key=f"{key_prefix}_start"
         )
         start_date_selected = timestamp_to_date(start_val)
-        st.caption(f"📅 {start_date_selected.strftime('%B %d, %Y')}")
+        st.caption(f"Selected: {start_date_selected.strftime('%B %d, %Y')}")
     
     with col2:
         end_val = st.slider(
@@ -222,11 +221,10 @@ def create_date_slider(start_date: date, end_date: date, key_prefix: str = "date
             max_value=end_ts,
             value=end_ts,
             step=86400.0,  # 1 day in seconds (float to match timestamp type)
-            format="%Y-%m-%d",
             key=f"{key_prefix}_end"
         )
         end_date_selected = timestamp_to_date(end_val)
-        st.caption(f"📅 {end_date_selected.strftime('%B %d, %Y')}")
+        st.caption(f"Selected: {end_date_selected.strftime('%B %d, %Y')}")
     
     # Ensure start <= end
     if start_date_selected > end_date_selected:
@@ -378,10 +376,13 @@ def main():
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric("Containers", container_count)
-                    st.metric("Tonnage", f"{current_tonnage:.1f} tons")
+                    st.metric("Tonnage", f"{current_tonnage:.1f}")
+                    st.text("tons")
                 with col2:
-                    st.metric("Storage", f"{utilization:.0f}%", delta=trend_pct)
-                    st.metric("Volume", f"{current_volume:.0f} m³")
+                    st.metric("Storage", f"{utilization:.0f}")
+                    st.text("percent")
+                    st.metric("Volume", f"{current_volume:.0f}")
+                    st.text("cubic meters")
         
         # B. Material Quality & Contamination (Top Right)
         st.markdown("""
@@ -416,7 +417,8 @@ def main():
                         alert_class = "alert" if purity < 70 else "warning" if purity < 85 else ""
                         # Calculate purity delta (vs 85% target)
                         purity_delta = purity - 85
-                        st.metric("Purity Score", f"{purity:.0f}%", delta=purity_delta if purity_delta != 0 else None)
+                        st.metric("Purity Score", f"{purity:.0f}", delta=purity_delta if purity_delta != 0 else None)
+                        st.text("percent")
                     with col2:
                         if contamination > 20:
                             st.error(f"⚠️ High contamination: {contamination:.1f}%")
@@ -450,7 +452,8 @@ def main():
             else:
                 arrivals = departures = net_change = 0
             
-            st.metric("Throughput", f"{throughput:.1f} tons/day")
+            st.metric("Throughput", f"{throughput:.1f}")
+            st.text("tons per day")
             st.metric("Arrivals", arrivals, delta=arrivals if arrivals > 0 else None)
             st.metric("Departures", departures, delta=-departures if departures > 0 else None)
             st.metric("Net Change", net_change, delta=net_change)
@@ -482,7 +485,8 @@ def main():
                 compliance_status = "⚠️ Needs Attention"
                 compliance_color = "#FF4500"
             
-            st.metric("Housekeeping", f"{housekeeping:.0f}%")
+            st.metric("Housekeeping", f"{housekeeping:.0f}")
+            st.text("percent")
             st.markdown(f'<div style="color: {compliance_color}; font-weight: 600;">{compliance_status}</div>', unsafe_allow_html=True)
             st.metric("Hazard Alerts", 0)
         else:
@@ -532,20 +536,23 @@ def main():
             with col_pred1:
                 # Calculate absolute forecast change
                 forecast_delta = forecast - current
-                st.metric("7-Day Forecast", f"{forecast:.0f} m³", delta=forecast_delta if abs(forecast_delta) > 1 else None)
+                st.metric("7-Day Forecast", f"{forecast:.0f}", delta=forecast_delta if abs(forecast_delta) > 1 else None)
+                st.text("cubic meters")
             
             with col_pred2:
                 # Diversion rate proxy (assume all detected material is recyclable)
                 total_volume = sum(timeline['values'])
                 diversion_rate = 100  # Heuristic: all detected = recyclable
-                st.metric("Diversion Rate", f"{diversion_rate:.0f}%")
+                st.metric("Diversion Rate", f"{diversion_rate:.0f}")
+                st.text("percent")
             
             with col_pred3:
                 # Trend direction
                 if len(timeline['values']) >= 2:
                     recent_trend = timeline['values'][-1] - timeline['values'][-2]
-                    trend_value = f"{recent_trend:.0f} m³"
+                    trend_value = f"{recent_trend:.0f}"
                     st.metric("Trend", trend_value, delta=recent_trend if abs(recent_trend) > 1 else None)
+                    st.text("cubic meters")
             
             # Trend Chart
             fig = go.Figure()
