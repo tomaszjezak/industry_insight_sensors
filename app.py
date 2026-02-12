@@ -467,7 +467,9 @@ def main():
         
         with col_e4:
             net = changes['summary'].get('net_change', 0) if changes.get('summary') else 0
-            st.metric("Net Change", net, delta=net)
+            # Ensure delta is numeric, not string
+            net_delta = float(net) if net is not None else None
+            st.metric("Net Change", net, delta=net_delta)
     
     # Trend Chart
     st.markdown("---")
