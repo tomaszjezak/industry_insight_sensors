@@ -400,13 +400,15 @@ def render_image_grid(images_in_range: list, db_images: list, db: TimeseriesDB):
                 use_ai = st.session_state.get('use_ai_analysis', False)
                 ai_provider = st.session_state.get('ai_provider', None)
                 ai_api_key = st.session_state.get('ai_api_key', None)
+                ai_model = st.session_state.get('ai_model', None)  # Optional model override
                 
                 if use_ai and ai_provider and ai_api_key:
                     try:
                         from src.ai_analyzer import AIRecyclingAnalyzer
                         ai_analyzer = AIRecyclingAnalyzer(
                             provider=ai_provider,
-                            api_key=ai_api_key
+                            api_key=ai_api_key,
+                            model=ai_model  # Pass model override if specified
                         )
                         ai_result = ai_analyzer.analyze(image, camera_height_m=4.0)
                         
