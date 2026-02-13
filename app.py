@@ -75,6 +75,28 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    
+    /* Sidebar text - white */
+    .css-1d391kg, .css-1d391kg p, .css-1d391kg label, .css-1d391kg div, .css-1d391kg span {
+        color: white !important;
+    }
+    
+    /* Sidebar background - dark */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1e1e1e 0%, #2d2d2d 100%);
+    }
+    
+    section[data-testid="stSidebar"] * {
+        color: white !important;
+    }
+    
+    /* Sidebar input text - white */
+    section[data-testid="stSidebar"] input, 
+    section[data-testid="stSidebar"] select,
+    section[data-testid="stSidebar"] textarea {
+        color: white !important;
+        background-color: #333 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
