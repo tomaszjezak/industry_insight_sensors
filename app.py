@@ -444,6 +444,21 @@ def render_image_grid(images_in_range: list, db_images: list, db: TimeseriesDB):
 
 
 def main():
+    # AI Analysis Configuration (Sidebar)
+    with st.sidebar:
+        st.markdown("### 🤖 AI Analysis")
+        use_ai = st.checkbox("Use AI Model (GPT-4V/Claude)", value=False, key="use_ai_analysis")
+        if use_ai:
+            ai_provider = st.selectbox("Provider", ["openai", "anthropic"], key="ai_provider")
+            ai_api_key = st.text_input("API Key", type="password", key="ai_api_key", 
+                                      help="Enter your OpenAI or Anthropic API key")
+            if ai_api_key:
+                st.session_state['ai_api_key'] = ai_api_key
+                st.session_state['ai_provider'] = ai_provider
+                st.success("✓ API key configured")
+            else:
+                st.warning("⚠️ Enter API key to use AI analysis")
+    
     # Header
     st.markdown("""
     <div class="header">
