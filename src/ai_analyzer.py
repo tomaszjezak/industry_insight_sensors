@@ -73,8 +73,9 @@ class AIRecyclingAnalyzer:
         elif self.provider == 'google':
             if not HAS_GOOGLE:
                 raise ImportError("google-generativeai package required. Install: pip install google-generativeai")
-            # Try gemini-pro first (most compatible), fallback to gemini-1.5-flash
-            self.model = model or 'gemini-pro'  # Standard model name
+            # Use gemini-1.5-flash (free, fast, supports vision)
+            # Alternative: gemini-2.0-flash (newer, if available)
+            self.model = model or 'gemini-1.5-flash'
             genai.configure(api_key=api_key)
             self.client = genai.GenerativeModel(self.model)
         else:
