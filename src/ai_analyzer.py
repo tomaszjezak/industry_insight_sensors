@@ -24,6 +24,12 @@ try:
 except ImportError:
     HAS_ANTHROPIC = False
 
+try:
+    import google.generativeai as genai
+    HAS_GOOGLE = True
+except ImportError:
+    HAS_GOOGLE = False
+
 
 class AIRecyclingAnalyzer:
     """
@@ -37,7 +43,7 @@ class AIRecyclingAnalyzer:
     
     def __init__(
         self,
-        provider: str = 'openai',  # 'openai' or 'anthropic'
+        provider: str = 'openai',  # 'openai', 'anthropic', or 'google'
         model: str = None,
         api_key: str = None,
     ):
@@ -45,9 +51,9 @@ class AIRecyclingAnalyzer:
         Initialize AI analyzer.
         
         Args:
-            provider: 'openai' for GPT-4V or 'anthropic' for Claude 3
-            model: Model name (defaults: 'gpt-4o' for OpenAI, 'claude-3-5-sonnet-20241022' for Anthropic)
-            api_key: API key (or set OPENAI_API_KEY / ANTHROPIC_API_KEY env var)
+            provider: 'openai' for GPT-4V, 'anthropic' for Claude 3, or 'google' for Gemini (FREE!)
+            model: Model name (defaults: 'gpt-4o' for OpenAI, 'claude-3-5-sonnet-20241022' for Anthropic, 'gemini-1.5-pro' for Google)
+            api_key: API key (or set OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY env var)
         """
         self.provider = provider.lower()
         self.api_key = api_key
@@ -64,8 +70,14 @@ class AIRecyclingAnalyzer:
                 raise ImportError("anthropic package required. Install: pip install anthropic")
             self.model = model or 'claude-3-5-sonnet-20241022'
             self.client = anthropic.Anthropic(api_key=api_key or None)
+        elif self.provider == 'google':
+            if not HAS_GOOGLE:
+                raise ImportError("google-generativeai package required. Install: pip install google-generativeai")
+            self.model = model or 'gemini-1.5-pro'
+            genai.configure(api_key=api_key)
+            self.client = genai.GenerativeModel(self.model)
         else:
-            raise ValueError(f"Unknown provider: {provider}. Use 'openai' or 'anthropic'")
+            raise ValueError(f"Unknown provider: {provider}. Use 'openai', 'anthropic', or 'google'")
     
     def analyze(
         self,
@@ -155,8 +167,12 @@ Use your knowledge of material densities and typical recycling facility operatio
         # Call AI API
         if self.provider == 'openai':
             response = self._call_openai(img_base64, prompt)
-        else:
+        elif self.provider == 'anthropic':
             response = self._call_anthropic(img_base64, prompt)
+        elif self.provider == 'google':
+            response = self._call_google(img_base64, prompt)
+        else:
+            raise ValueError(f"Unknown provider: {self.provider}")
         
         # Parse response
         result = self._parse_response(response, image)
@@ -215,6 +231,25 @@ Use your knowledge of material densities and typical recycling facility operatio
             ]
         )
         return message.content[0].text
+    
+    def _call_google(self, img_base64: str, prompt: str) -> str:
+        """Call Google Gemini API (FREE tier available!)."""
+        # Convert base64 to PIL Image for Gemini
+        from PIL import Image
+        import base64
+        
+        img_data = base64.b64decode(img_base64)
+        img = Image.open(BytesIO(img_data))
+        
+        # Gemini can take PIL Image directly
+        response = self.client.generate_content(
+            [prompt, img],
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json",  # Force JSON response
+                temperature=0.1,  # Lower temperature for more consistent outputs
+            )
+        )
+        return response.text
     
     def _parse_response(self, response_text: str, image: np.ndarray) -> Dict:
         """Parse AI response and convert to pipeline format."""

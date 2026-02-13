@@ -447,11 +447,12 @@ def main():
     # AI Analysis Configuration (Sidebar)
     with st.sidebar:
         st.markdown("### 🤖 AI Analysis")
-        use_ai = st.checkbox("Use AI Model (GPT-4V/Claude)", value=False, key="use_ai_analysis")
+        use_ai = st.checkbox("Use AI Model (GPT-4V/Claude/Gemini)", value=False, key="use_ai_analysis")
         if use_ai:
-            ai_provider = st.selectbox("Provider", ["openai", "anthropic"], key="ai_provider")
+            ai_provider = st.selectbox("Provider", ["google", "openai", "anthropic"], key="ai_provider", 
+                                      help="Google Gemini is FREE! Get API key: https://aistudio.google.com/apikey")
             ai_api_key = st.text_input("API Key", type="password", key="ai_api_key", 
-                                      help="Enter your OpenAI or Anthropic API key")
+                                      help="Google Gemini: FREE at https://aistudio.google.com/apikey | OpenAI: https://platform.openai.com/api-keys | Anthropic: https://console.anthropic.com/")
             if ai_api_key:
                 st.session_state['ai_api_key'] = ai_api_key
                 st.session_state['ai_provider'] = ai_provider
