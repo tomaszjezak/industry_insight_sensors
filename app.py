@@ -346,13 +346,20 @@ def render_image_grid(images_in_range: list, db_images: list, db: TimeseriesDB):
                         analysis_result = {'segmentation': {}}
                     analysis_result['segmentation']['mask'] = seg_result['mask']
                 
-                # Draw overlays
+                # Draw overlays on FULL HD image (image is already full resolution from cv2.imread)
                 overlay_image = draw_ai_overlay(image, analysis_result)
                 
-                # Display image with overlays
+                # Display FULL HD image with overlays - use original file path for best quality
+                # This ensures full resolution when user clicks fullscreen
                 st.image(numpy_to_streamlit(overlay_image), 
-                        caption=f"AI-Enhanced View - {date_str}",
+                        caption=f"AI-Enhanced View - {date_str} (Full HD)",
                         use_container_width=True)
+                
+                # Also provide original file for maximum quality fullscreen viewing
+                with st.expander("🔍 View Original Full Resolution (Click to Fullscreen)"):
+                    st.image(str(img_path),
+                            caption=f"Original - {date_str}",
+                            use_container_width=False)
                 
                 # Stats in columns
                 col1, col2, col3, col4 = st.columns(4)
