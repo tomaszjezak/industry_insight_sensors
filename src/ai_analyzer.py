@@ -409,6 +409,76 @@ IMPORTANT: Only include detections you are confident are actual recycling MATERI
                         f"Check your API key and model name."
                     )
     
+    def _validate_detection(self, obj: Dict, image_shape: Tuple[int, int]) -> bool:
+        """
+        Validate that a detection is actually a recycling material pile, not infrastructure.
+        
+        Args:
+            obj: Detection object from AI response
+            image_shape: (height, width) of image
+        
+        Returns:
+            True if detection is valid, False otherwise
+        """
+        h, w = image_shape
+        
+        # Check confidence threshold
+        confidence = obj.get('confidence', 0.0)
+        if confidence < 0.5:
+            return False
+        
+        # Check bounding box
+        bbox = obj.get('bbox', [])
+        if len(bbox) != 4:
+            return False
+        
+        x, y, width, height = bbox
+        
+        # Validate bounding box dimensions
+        if width < 20 or height < 20:  # Too small
+            return False
+        if width > w * 0.5 or height > h * 0.5:  # Too large (>50% of image)
+            return False
+        
+        # Validate aspect ratio (not a line)
+        aspect_ratio = width / height if height > 0 else 0
+        if aspect_ratio > 10.0 or aspect_ratio < 0.1:  # Too wide or too tall (like a line)
+            return False
+        
+        # Validate position (within image bounds)
+        if x < 0 or y < 0 or x + width > w or y + height > h:
+            return False
+        
+        # Check volume and tonnage are reasonable
+        volume = obj.get('volume_m3', 0)
+        tonnage = obj.get('tonnage_tons', 0)
+        if volume <= 0 or volume > 10000:  # Unreasonable volume
+            return False
+        if tonnage <= 0 or tonnage > 50000:  # Unreasonable tonnage
+            return False
+        
+        # Check description for infrastructure keywords (exclude these)
+        description = obj.get('description', '').lower()
+        infrastructure_keywords = [
+            'fence', 'gate', 'building', 'wall', 'structure', 'road', 'pavement',
+            'asphalt', 'ground', 'empty', 'sky', 'vegetation', 'tree', 'bush',
+            'vehicle', 'truck', 'car', 'sign', 'logo', 'text', 'shadow', 'reflection'
+        ]
+        if any(keyword in description for keyword in infrastructure_keywords):
+            return False
+        
+        # Check that description mentions materials
+        material_keywords = [
+            'bale', 'stack', 'pile', 'debris', 'material', 'container', 'bin',
+            'concrete', 'wood', 'metal', 'plastic', 'paper', 'cardboard', 'scrap',
+            'recycling', 'compressed', 'waste'
+        ]
+        if not any(keyword in description for keyword in material_keywords):
+            # If description doesn't mention materials, it's probably infrastructure
+            return False
+        
+        return True
+    
     def _parse_response(self, response_text: str, image: np.ndarray) -> Dict:
         """Parse AI response and convert to pipeline format."""
         h, w = image.shape[:2]
@@ -430,11 +500,25 @@ IMPORTANT: Only include detections you are confident are actual recycling MATERI
         # Convert to pipeline format
         objects = data.get('objects', [])
         
-        # Create combined mask from all bounding boxes
+        # Validate and filter objects
+        valid_objects = []
+        for obj in objects:
+            if self._validate_detection(obj, (h, w)):
+                valid_objects.append(obj)
+            else:
+                print(f"[!] Filtered out invalid detection: {obj.get('description', 'unknown')} (confidence: {obj.get('confidence', 0):.2f})")
+        
+        if len(valid_objects) == 0:
+            print("[!] No valid detections found after filtering. AI may have detected only infrastructure.")
+            return self._empty_result()
+        
+        print(f"[+] Validated {len(valid_objects)}/{len(objects)} detections as actual material piles")
+        
+        # Create combined mask from all valid bounding boxes
         combined_mask = np.zeros((h, w), dtype=np.uint8)
         segments = []
         
-        for obj in objects:
+        for obj in valid_objects:
             bbox = obj.get('bbox', [])
             if len(bbox) == 4:
                 x, y, width, height = bbox
@@ -475,13 +559,12 @@ IMPORTANT: Only include detections you are confident are actual recycling MATERI
         else:
             # Fallback to data if calculation fails
             overall_materials = data.get('overall_materials', {})
-        
-        # Normalize material percentages
-        total_pct = sum(overall_materials.values())
-        if total_pct > 0:
-            overall_materials = {k: (v / total_pct * 100) for k, v in overall_materials.items()}
-        else:
-            overall_materials = {'mixed': 100.0}
+            # Normalize fallback data
+            total_pct = sum(overall_materials.values())
+            if total_pct > 0:
+                overall_materials = {k: (v / total_pct * 100) for k, v in overall_materials.items()}
+            else:
+                overall_materials = {'mixed': 100.0}
         
         return {
             'method': f'ai_{self.provider}',
