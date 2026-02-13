@@ -265,22 +265,21 @@ def get_image_stats(img_path: Path, img_date: datetime, db_images: list, db: Tim
 
 
 def render_image_grid(images_in_range: list, db_images: list, db: TimeseriesDB):
-    """Render clickable image grid with dates."""
+    """Render image grid with inline details - all images in one row."""
     st.markdown("### 📸 Facility Images")
     
-    # Responsive grid - 3 columns on desktop
-    num_cols = 3
-    cols = st.columns(num_cols)
+    # All images in one row - 7 columns
+    num_images = len(images_in_range)
+    cols = st.columns(num_images)
     
     for idx, (img_path, img_date) in enumerate(images_in_range):
-        col_idx = idx % num_cols
-        with cols[col_idx]:
-            # Load and resize thumbnail
+        with cols[idx]:
+            # Load and resize thumbnail - smaller to fit 7 in one row
             thumb = cv2.imread(str(img_path))
             if thumb is not None:
-                # Preserve aspect ratio
+                # Smaller thumbnails - max 200px to fit 7 in one row
                 h, w = thumb.shape[:2]
-                max_dim = 400
+                max_dim = 200
                 if w > h:
                     new_w = max_dim
                     new_h = int(h * (max_dim / w))
@@ -289,18 +288,88 @@ def render_image_grid(images_in_range: list, db_images: list, db: TimeseriesDB):
                     new_w = int(w * (max_dim / h))
                 
                 thumb_resized = cv2.resize(thumb, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-                date_str = img_date.strftime('%B %Y')
+                date_str = img_date.strftime('%b %Y')  # Shorter format: "Feb 2023"
                 
                 # Display image with date as caption
                 st.image(numpy_to_streamlit(thumb_resized), 
                         caption=f"**{date_str}**", 
                         use_container_width=True)
+    
+    st.markdown("---")
+    
+    # Show details for all images inline - no modal needed
+    st.markdown("### 📊 Image Details")
+    
+    # Display each image with its stats in expandable sections
+    for idx, (img_path, img_date) in enumerate(images_in_range):
+        date_str = img_date.strftime('%B %Y')
+        
+        with st.expander(f"🔍 {date_str} - View Details", expanded=(idx == len(images_in_range) - 1)):
+            # Get stats
+            stats = get_image_stats(img_path, img_date, db_images, db)
+            
+            # Load image and create overlay
+            image = cv2.imread(str(img_path))
+            if image is not None:
+                # Get analysis result for segmentation
+                img_date_str = img_date.date().isoformat()
+                db_img = None
+                for db_img_row in db_images:
+                    if db_img_row['date'].startswith(img_date_str):
+                        db_img = db_img_row
+                        break
                 
-                # Clickable button to open modal
-                if st.button("View Details", key=f"view_{idx}", use_container_width=True):
-                    st.session_state.selected_image_index = idx
-                    st.session_state.modal_open = True
-                    st.rerun()
+                analysis_result = None
+                container_list = []
+                if db_img:
+                    try:
+                        containers = db.get_containers_by_date_range(img_date_str, img_date_str)
+                        container_list = [c for c in containers if c['image_id'] == db_img['id']] if containers else []
+                    except:
+                        container_list = []
+                    
+                    analysis_result = {
+                        'volume': {
+                            'volume_m3': db_img.get('volume_m3', 0) or 0,
+                            'tonnage_estimate': db_img.get('tonnage_estimate', 0) or 0,
+                        },
+                        'containers': container_list,
+                        'segmentation': {'mask': None}
+                    }
+                
+                # Run segmentation (fast OpenCV method)
+                from src.segmentation import PileSegmenter
+                segmenter = PileSegmenter(use_sam=False)
+                seg_result = segmenter.segment(image)
+                if seg_result and 'mask' in seg_result and seg_result['mask'] is not None:
+                    if analysis_result is None:
+                        analysis_result = {'segmentation': {}}
+                    analysis_result['segmentation']['mask'] = seg_result['mask']
+                
+                # Draw overlays
+                overlay_image = draw_ai_overlay(image, analysis_result)
+                
+                # Display image with overlays
+                st.image(numpy_to_streamlit(overlay_image), 
+                        caption=f"AI-Enhanced View - {date_str}",
+                        use_container_width=True)
+                
+                # Stats in columns
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Material Tonnage", f"{stats['tonnage']:.1f} tons")
+                with col2:
+                    st.metric("Debris Volume", f"{stats['volume']:.0f} m³")
+                with col3:
+                    st.metric("Containers", stats['container_count'])
+                with col4:
+                    st.metric("Purity", f"{stats['purity']:.0f}%")
+                
+                # Material breakdown
+                if stats['materials']:
+                    st.markdown("**Material Breakdown:**")
+                    for material, pct in stats['materials'].items():
+                        st.progress(pct / 100, text=f"{material.capitalize()}: {pct:.1f}%")
 
 
 def render_modal(img_path: Path, img_date: datetime, db_images: list, db: TimeseriesDB):
@@ -481,13 +550,6 @@ def main():
             latest_img = db_img
             break
     
-    # Initialize session state for modal
-    if 'modal_open' not in st.session_state:
-        st.session_state.modal_open = False
-    if 'selected_image_index' not in st.session_state:
-        st.session_state.selected_image_index = None
-    
-    
     # Get images in date range
     timelapse_images = find_timelapse_images()
     images_in_range = [
@@ -496,14 +558,8 @@ def main():
     ]
     
     if images_in_range:
-        # Render image grid
+        # Render image grid with inline details (no modal)
         render_image_grid(images_in_range, db_images, db)
-        
-        # Render modal if one is open
-        if st.session_state.modal_open and st.session_state.selected_image_index is not None:
-            if 0 <= st.session_state.selected_image_index < len(images_in_range):
-                selected_img_path, selected_img_date = images_in_range[st.session_state.selected_image_index]
-                render_modal(selected_img_path, selected_img_date, db_images, db)
     else:
         st.info("No images found in the selected date range.")
 
