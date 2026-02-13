@@ -308,7 +308,7 @@ def render_image_grid(images_in_range: list, db_images: list, db: TimeseriesDB):
             # Get stats
             stats = get_image_stats(img_path, img_date, db_images, db)
             
-            # Load image and create overlay
+            # Load FULL HD image directly from file (not thumbnail)
             image = cv2.imread(str(img_path))
             if image is not None:
                 # Get analysis result for segmentation
