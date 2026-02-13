@@ -396,12 +396,12 @@ def render_image_grid(images_in_range: list, db_images: list, db: TimeseriesDB):
                         'segmentation': {'mask': None}
                     }
                 
-                # Use AI multimodal model for analysis (if API key configured)
+                # Use AI multimodal model for analysis (if API key configured from file)
                 use_ai = st.session_state.get('use_ai_analysis', False)
-                ai_provider = st.session_state.get('ai_provider', 'openai')
+                ai_provider = st.session_state.get('ai_provider', None)
                 ai_api_key = st.session_state.get('ai_api_key', None)
                 
-                if use_ai and ai_api_key:
+                if use_ai and ai_provider and ai_api_key:
                     try:
                         from src.ai_analyzer import AIRecyclingAnalyzer
                         ai_analyzer = AIRecyclingAnalyzer(

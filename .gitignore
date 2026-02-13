@@ -58,3 +58,6 @@ __pycache__/
 # Test outputs
 test_*.jpg
 *_test.jpg
+
+# API keys (don't commit!)
+api_key.txt
