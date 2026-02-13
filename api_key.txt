@@ -1,0 +1,9 @@
+# Paste your AI API key here
+# For Google Gemini (FREE): https://aistudio.google.com/apikey
+# For OpenAI: https://platform.openai.com/api-keys
+# For Anthropic: https://console.anthropic.com/
+
+# Format: provider:api_key
+# Example: google:YOUR_API_KEY_HERE
+# Example: openai:sk-...
+# Example: anthropic:sk-ant-...

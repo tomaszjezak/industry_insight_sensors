@@ -476,24 +476,32 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    # AI Analysis Configuration (Sidebar) - MUST be after header for Streamlit to show it
-    with st.sidebar:
-        st.markdown("### 🤖 AI Analysis")
-        st.markdown("**Configure AI model for recycling detection**")
-        use_ai = st.checkbox("Use AI Model (GPT-4V/Claude/Gemini)", value=False, key="use_ai_analysis")
-        if use_ai:
-            ai_provider = st.selectbox("Provider", ["google", "openai", "anthropic"], key="ai_provider", 
-                                      help="Google Gemini is FREE! Get API key: https://aistudio.google.com/apikey")
-            ai_api_key = st.text_input("API Key", type="password", key="ai_api_key", 
-                                      help="Google Gemini: FREE at https://aistudio.google.com/apikey | OpenAI: https://platform.openai.com/api-keys | Anthropic: https://console.anthropic.com/")
-            if ai_api_key:
-                st.session_state['ai_api_key'] = ai_api_key
-                st.session_state['ai_provider'] = ai_provider
-                st.success("✓ API key configured")
-            else:
-                st.warning("⚠️ Enter API key to use AI analysis")
-        else:
-            st.info("💡 Enable AI model to get accurate pile detection, volume estimates, and material classification")
+    # Load AI API key from file (simple config)
+    ai_config_path = Path("api_key.txt")
+    ai_provider = None
+    ai_api_key = None
+    
+    if ai_config_path.exists():
+        try:
+            with open(ai_config_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and ':' in line:
+                        parts = line.split(':', 1)
+                        if len(parts) == 2:
+                            ai_provider = parts[0].strip()
+                            ai_api_key = parts[1].strip()
+                            break
+        except Exception as e:
+            print(f"[!] Failed to read API key: {e}")
+    
+    # Store in session state for use in image analysis
+    if ai_provider and ai_api_key:
+        st.session_state['ai_api_key'] = ai_api_key
+        st.session_state['ai_provider'] = ai_provider
+        st.session_state['use_ai_analysis'] = True
+    else:
+        st.session_state['use_ai_analysis'] = False
     
     # Initialize
     timelapse_summary = get_timelapse_summary()
