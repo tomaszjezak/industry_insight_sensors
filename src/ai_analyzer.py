@@ -8,7 +8,7 @@ import cv2
 import json
 import base64
 from io import BytesIO
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from PIL import Image
 
