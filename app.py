@@ -444,9 +444,20 @@ def render_image_grid(images_in_range: list, db_images: list, db: TimeseriesDB):
 
 
 def main():
-    # AI Analysis Configuration (Sidebar)
+    # Header
+    st.markdown("""
+    <div class="header">
+        <h1 style="margin:0; font-size: 2em; display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.5em;">♻️</span> EDCO Insights - Site 38782
+            <span style="margin-left: auto; font-size: 0.6em; opacity: 0.9;">AI-Powered Monitoring</span>
+        </h1>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # AI Analysis Configuration (Sidebar) - MUST be after header for Streamlit to show it
     with st.sidebar:
         st.markdown("### 🤖 AI Analysis")
+        st.markdown("**Configure AI model for recycling detection**")
         use_ai = st.checkbox("Use AI Model (GPT-4V/Claude/Gemini)", value=False, key="use_ai_analysis")
         if use_ai:
             ai_provider = st.selectbox("Provider", ["google", "openai", "anthropic"], key="ai_provider", 
@@ -459,16 +470,8 @@ def main():
                 st.success("✓ API key configured")
             else:
                 st.warning("⚠️ Enter API key to use AI analysis")
-    
-    # Header
-    st.markdown("""
-    <div class="header">
-        <h1 style="margin:0; font-size: 2em; display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 1.5em;">♻️</span> EDCO Insights - Site 38782
-            <span style="margin-left: auto; font-size: 0.6em; opacity: 0.9;">AI-Powered Monitoring</span>
-        </h1>
-    </div>
-    """, unsafe_allow_html=True)
+        else:
+            st.info("💡 Enable AI model to get accurate pile detection, volume estimates, and material classification")
     
     # Initialize
     timelapse_summary = get_timelapse_summary()
