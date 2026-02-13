@@ -403,26 +403,42 @@ def render_image_grid(images_in_range: list, db_images: list, db: TimeseriesDB):
                 ai_model = st.session_state.get('ai_model', None)  # Optional model override
                 
                 if use_ai and ai_provider and ai_api_key:
-                    try:
-                        from src.ai_analyzer import AIRecyclingAnalyzer
-                        ai_analyzer = AIRecyclingAnalyzer(
-                            provider=ai_provider,
-                            api_key=ai_api_key,
-                            model=ai_model  # Pass model override if specified
-                        )
-                        ai_result = ai_analyzer.analyze(image, camera_height_m=4.0)
-                        
-                        # Use AI results
-                        if ai_result and 'segmentation' in ai_result:
-                            if analysis_result is None:
-                                analysis_result = {}
-                            analysis_result['segmentation'] = ai_result['segmentation']
-                            analysis_result['volume'] = ai_result.get('volume', {})
-                            analysis_result['materials'] = ai_result.get('materials', {})
-                            analysis_result['ai_objects'] = ai_result.get('objects', [])
-                    except Exception as e:
-                        st.warning(f"AI analysis failed: {e}. Falling back to OpenCV segmentation.")
-                        use_ai = False
+                    # Show progress indicator for AI analysis
+                    with st.spinner("🤖 Running AI analysis (this may take 10-30 seconds)..."):
+                        try:
+                            from src.ai_analyzer import AIRecyclingAnalyzer
+                            import signal
+                            
+                            # Create analyzer
+                            ai_analyzer = AIRecyclingAnalyzer(
+                                provider=ai_provider,
+                                api_key=ai_api_key,
+                                model=ai_model  # Pass model override if specified
+                            )
+                            
+                            # Run analysis with timeout handling
+                            ai_result = None
+                            try:
+                                ai_result = ai_analyzer.analyze(image, camera_height_m=4.0)
+                            except Exception as api_error:
+                                error_msg = str(api_error)
+                                if 'timeout' in error_msg.lower() or 'timed out' in error_msg.lower():
+                                    st.error("⏱️ AI analysis timed out. The API may be slow. Try again or use OpenCV segmentation.")
+                                else:
+                                    raise api_error
+                            
+                            # Use AI results
+                            if ai_result and 'segmentation' in ai_result:
+                                if analysis_result is None:
+                                    analysis_result = {}
+                                analysis_result['segmentation'] = ai_result['segmentation']
+                                analysis_result['volume'] = ai_result.get('volume', {})
+                                analysis_result['materials'] = ai_result.get('materials', {})
+                                analysis_result['ai_objects'] = ai_result.get('objects', [])
+                                st.success("✓ AI analysis complete")
+                        except Exception as e:
+                            st.warning(f"⚠️ AI analysis failed: {e}. Falling back to OpenCV segmentation.")
+                            use_ai = False
                 
                 if not use_ai or not ai_api_key:
                     # Fallback to fast OpenCV segmentation

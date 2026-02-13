@@ -315,22 +315,46 @@ Use your knowledge of material densities and typical recycling facility operatio
         # Convert base64 to PIL Image for Gemini
         from PIL import Image
         import base64
+        import time
         
         img_data = base64.b64decode(img_base64)
         img = Image.open(BytesIO(img_data))
         
+        # Reduce image size if too large (Gemini has limits)
+        max_size = 2048
+        if img.width > max_size or img.height > max_size:
+            img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+            print(f"[!] Resized image to {img.width}x{img.height} for API")
+        
+        start_time = time.time()
+        timeout = 60  # 60 second timeout
+        
         # Try with JSON response format first (for newer models)
         try:
+            print(f"[*] Calling Gemini API with model: {self.model}")
             response = self.client.generate_content(
                 [prompt, img],
                 generation_config=genai.types.GenerationConfig(
                     response_mime_type="application/json",  # Force JSON response
                     temperature=0.1,  # Lower temperature for more consistent outputs
-                )
+                ),
+                request_options={'timeout': timeout}  # Add timeout
             )
+            elapsed = time.time() - start_time
+            print(f"[+] Gemini API call completed in {elapsed:.1f}s")
             return response.text
         except Exception as e:
             error_str = str(e)
+            elapsed = time.time() - start_time
+            
+            # Check for timeout
+            if elapsed >= timeout or 'timeout' in error_str.lower():
+                raise TimeoutError(
+                    f"Gemini API call timed out after {elapsed:.1f}s. "
+                    f"The API may be slow or the image is too large. "
+                    f"Try using a smaller image or check your internet connection."
+                )
+            
             # Check for 404 model not found errors
             if '404' in error_str or 'not found' in error_str.lower():
                 raise ValueError(
@@ -346,18 +370,27 @@ Use your knowledge of material densities and typical recycling facility operatio
                     [prompt, img],
                     generation_config=genai.types.GenerationConfig(
                         temperature=0.1,
-                    )
+                    ),
+                    request_options={'timeout': timeout}
                 )
+                elapsed = time.time() - start_time
+                print(f"[+] Gemini API call completed in {elapsed:.1f}s (without JSON mode)")
                 return response.text
             except Exception as e2:
                 # Last resort: no config
                 try:
-                    response = self.client.generate_content([prompt, img])
+                    response = self.client.generate_content(
+                        [prompt, img],
+                        request_options={'timeout': timeout}
+                    )
+                    elapsed = time.time() - start_time
+                    print(f"[+] Gemini API call completed in {elapsed:.1f}s (basic mode)")
                     return response.text
                 except Exception as e3:
                     raise ValueError(
                         f"Failed to call Gemini API: {e3}\n"
                         f"Model: {self.model}\n"
+                        f"Elapsed time: {time.time() - start_time:.1f}s\n"
                         f"Check your API key and model name."
                     )
     
