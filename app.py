@@ -337,14 +337,41 @@ def render_image_grid(images_in_range: list, db_images: list, db: TimeseriesDB):
                         'segmentation': {'mask': None}
                     }
                 
-                # Run segmentation (fast OpenCV method)
-                from src.segmentation import PileSegmenter
-                segmenter = PileSegmenter(use_sam=False)
-                seg_result = segmenter.segment(image)
-                if seg_result and 'mask' in seg_result and seg_result['mask'] is not None:
-                    if analysis_result is None:
-                        analysis_result = {'segmentation': {}}
-                    analysis_result['segmentation']['mask'] = seg_result['mask']
+                # Use AI multimodal model for analysis (if API key configured)
+                use_ai = st.session_state.get('use_ai_analysis', False)
+                ai_provider = st.session_state.get('ai_provider', 'openai')
+                ai_api_key = st.session_state.get('ai_api_key', None)
+                
+                if use_ai and ai_api_key:
+                    try:
+                        from src.ai_analyzer import AIRecyclingAnalyzer
+                        ai_analyzer = AIRecyclingAnalyzer(
+                            provider=ai_provider,
+                            api_key=ai_api_key
+                        )
+                        ai_result = ai_analyzer.analyze(image, camera_height_m=4.0)
+                        
+                        # Use AI results
+                        if ai_result and 'segmentation' in ai_result:
+                            if analysis_result is None:
+                                analysis_result = {}
+                            analysis_result['segmentation'] = ai_result['segmentation']
+                            analysis_result['volume'] = ai_result.get('volume', {})
+                            analysis_result['materials'] = ai_result.get('materials', {})
+                            analysis_result['ai_objects'] = ai_result.get('objects', [])
+                    except Exception as e:
+                        st.warning(f"AI analysis failed: {e}. Falling back to OpenCV segmentation.")
+                        use_ai = False
+                
+                if not use_ai or not ai_api_key:
+                    # Fallback to fast OpenCV segmentation
+                    from src.segmentation import PileSegmenter
+                    segmenter = PileSegmenter(use_sam=False)
+                    seg_result = segmenter.segment(image)
+                    if seg_result and 'mask' in seg_result and seg_result['mask'] is not None:
+                        if analysis_result is None:
+                            analysis_result = {'segmentation': {}}
+                        analysis_result['segmentation']['mask'] = seg_result['mask']
                 
                 # Draw overlays on FULL HD image (image is already full resolution from cv2.imread)
                 overlay_image = draw_ai_overlay(image, analysis_result)

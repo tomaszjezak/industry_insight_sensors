@@ -23,3 +23,7 @@ bing-image-downloader>=1.1.2
 # Utilities
 requests>=2.31.0
 tqdm>=4.66.0
+
+# AI Multimodal Models (optional - install if using AI analysis)
+openai>=1.0.0
+anthropic>=0.18.0
