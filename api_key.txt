@@ -7,3 +7,10 @@
 # Example: google:YOUR_API_KEY_HERE
 # Example: openai:sk-...
 # Example: anthropic:sk-ant-...
+
+# Optional: Specify model name for Google Gemini
+# Format: provider:api_key:model_name
+# Example: google:YOUR_API_KEY_HERE:gemini-pro
+# Example: google:YOUR_API_KEY_HERE:gemini-1.5-flash
+# If not specified, system will auto-discover available models
+google:AIzaSyAM-h1QZUuXVYScgcpfO1k2zkCeosOIqU0

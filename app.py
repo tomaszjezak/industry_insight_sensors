@@ -480,6 +480,7 @@ def main():
     ai_config_path = Path("api_key.txt")
     ai_provider = None
     ai_api_key = None
+    ai_model = None  # Optional model name override
     
     if ai_config_path.exists():
         try:
@@ -487,10 +488,14 @@ def main():
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith('#') and ':' in line:
-                        parts = line.split(':', 1)
-                        if len(parts) == 2:
+                        # Support formats: provider:api_key or provider:api_key:model_name
+                        parts = line.split(':')
+                        if len(parts) >= 2:
                             ai_provider = parts[0].strip()
                             ai_api_key = parts[1].strip()
+                            # Optional third part is model name
+                            if len(parts) >= 3:
+                                ai_model = parts[2].strip()
                             break
         except Exception as e:
             print(f"[!] Failed to read API key: {e}")
@@ -499,6 +504,8 @@ def main():
     if ai_provider and ai_api_key:
         st.session_state['ai_api_key'] = ai_api_key
         st.session_state['ai_provider'] = ai_provider
+        if ai_model:
+            st.session_state['ai_model'] = ai_model
         st.session_state['use_ai_analysis'] = True
     else:
         st.session_state['use_ai_analysis'] = False

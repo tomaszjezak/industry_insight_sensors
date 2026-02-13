@@ -31,6 +31,75 @@ except ImportError:
     HAS_GOOGLE = False
 
 
+def _discover_gemini_model(api_key: str, preferred_model: str = None) -> str:
+    """
+    Discover available Gemini models with vision support.
+    
+    Args:
+        api_key: Google API key
+        preferred_model: Preferred model name to try first
+    
+    Returns:
+        Model name that works, or raises ValueError if none found
+    """
+    # Priority list of models to try (in order of preference)
+    model_priority = [
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+        'gemini-pro',
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-exp',
+    ]
+    
+    # If preferred model is specified, try it first
+    if preferred_model:
+        model_priority.insert(0, preferred_model)
+    
+    genai.configure(api_key=api_key)
+    
+    # Try to list available models
+    available_models = []
+    try:
+        for model in genai.list_models():
+            if 'generateContent' in model.supported_generation_methods:
+                # Check if model supports vision (has input token limit > 0)
+                model_name = model.name.split('/')[-1]  # Extract just the model name
+                available_models.append(model_name)
+    except Exception as e:
+        print(f"[!] Could not list models: {e}. Trying fallback chain...")
+    
+    # Try each model in priority order
+    for model_name in model_priority:
+        # If we have a list of available models, check if this one is available
+        if available_models:
+            # Check if model name matches (handle variations)
+            for avail in available_models:
+                if model_name in avail or avail in model_name:
+                    try:
+                        # Test if we can create a GenerativeModel with it
+                        test_model = genai.GenerativeModel(avail)
+                        print(f"[+] Using Gemini model: {avail}")
+                        return avail
+                    except Exception as e:
+                        continue
+        else:
+            # No model list available, try directly
+            try:
+                test_model = genai.GenerativeModel(model_name)
+                print(f"[+] Using Gemini model: {model_name}")
+                return model_name
+            except Exception as e:
+                # Model not available, try next
+                continue
+    
+    # If we got here, none of the models worked
+    raise ValueError(
+        f"No working Gemini model found. Tried: {', '.join(model_priority)}. "
+        f"Available models: {', '.join(available_models) if available_models else 'could not list'}. "
+        f"Please check your API key and try specifying a model name manually."
+    )
+
+
 class AIRecyclingAnalyzer:
     """
     Uses multimodal AI (GPT-4V or Claude 3) to analyze recycling facility images.
@@ -73,11 +142,18 @@ class AIRecyclingAnalyzer:
         elif self.provider == 'google':
             if not HAS_GOOGLE:
                 raise ImportError("google-generativeai package required. Install: pip install google-generativeai")
-            # Use gemini-1.5-flash (free, fast, supports vision)
-            # Alternative: gemini-2.0-flash (newer, if available)
-            self.model = model or 'gemini-1.5-flash'
-            genai.configure(api_key=api_key)
-            self.client = genai.GenerativeModel(self.model)
+            
+            # Discover and use available Gemini model
+            try:
+                self.model = _discover_gemini_model(api_key, model)
+                genai.configure(api_key=api_key)
+                self.client = genai.GenerativeModel(self.model)
+            except ValueError as e:
+                # If discovery fails, provide helpful error message
+                raise ValueError(
+                    f"Failed to initialize Gemini model: {e}\n"
+                    f"Try specifying a model name manually in api_key.txt: google:API_KEY:MODEL_NAME"
+                )
         else:
             raise ValueError(f"Unknown provider: {provider}. Use 'openai', 'anthropic', or 'google'")
     
@@ -243,15 +319,47 @@ Use your knowledge of material densities and typical recycling facility operatio
         img_data = base64.b64decode(img_base64)
         img = Image.open(BytesIO(img_data))
         
-        # Gemini can take PIL Image directly
-        response = self.client.generate_content(
-            [prompt, img],
-            generation_config=genai.types.GenerationConfig(
-                response_mime_type="application/json",  # Force JSON response
-                temperature=0.1,  # Lower temperature for more consistent outputs
+        # Try with JSON response format first (for newer models)
+        try:
+            response = self.client.generate_content(
+                [prompt, img],
+                generation_config=genai.types.GenerationConfig(
+                    response_mime_type="application/json",  # Force JSON response
+                    temperature=0.1,  # Lower temperature for more consistent outputs
+                )
             )
-        )
-        return response.text
+            return response.text
+        except Exception as e:
+            error_str = str(e)
+            # Check for 404 model not found errors
+            if '404' in error_str or 'not found' in error_str.lower():
+                raise ValueError(
+                    f"Gemini model '{self.model}' not found or not supported. "
+                    f"Error: {error_str}\n"
+                    f"Try specifying a different model in api_key.txt: google:API_KEY:MODEL_NAME\n"
+                    f"Common working models: gemini-pro, gemini-1.5-flash, gemini-1.5-pro"
+                )
+            # For other errors, try without JSON constraint
+            try:
+                print(f"[!] JSON mode failed ({error_str}), trying without JSON constraint...")
+                response = self.client.generate_content(
+                    [prompt, img],
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.1,
+                    )
+                )
+                return response.text
+            except Exception as e2:
+                # Last resort: no config
+                try:
+                    response = self.client.generate_content([prompt, img])
+                    return response.text
+                except Exception as e3:
+                    raise ValueError(
+                        f"Failed to call Gemini API: {e3}\n"
+                        f"Model: {self.model}\n"
+                        f"Check your API key and model name."
+                    )
     
     def _parse_response(self, response_text: str, image: np.ndarray) -> Dict:
         """Parse AI response and convert to pipeline format."""
