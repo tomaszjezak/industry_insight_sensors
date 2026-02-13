@@ -16,7 +16,7 @@ st.set_page_config(
     page_title="EDCO Insights",
     page_icon="♻️",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",  # Show sidebar by default so users can configure AI
 )
 
 # Import components
