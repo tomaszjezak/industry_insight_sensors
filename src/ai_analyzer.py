@@ -186,27 +186,43 @@ class AIRecyclingAnalyzer:
         
         h, w = image.shape[:2]
         
-        # Create detailed prompt
+        # Create detailed prompt with specific guidance
         prompt = f"""Analyze this recycling facility image taken from Google Street View (camera height approximately {camera_height_m}m).
 
-Your task:
-1. Detect and outline ALL individual recycling piles, bales, containers, and material stacks visible in the image
-2. For EACH detected object, provide:
-   - Bounding box coordinates (x, y, width, height) in pixels (image size: {w}x{h})
-   - Estimated volume in cubic meters (m³)
-   - Estimated weight/tonnage in tons
-   - Material composition breakdown (concrete, wood, metal, plastic, mixed, etc.) as percentages
-   - Confidence level (0-1) for your estimates
+CRITICAL: You must ONLY detect actual recycling MATERIALS - compressed bales, material stacks, debris piles, and containers WITH materials inside.
 
-Focus on:
-- Individual piles of recycling materials (not the entire image)
-- Bales of sorted materials
-- Containers or bins with materials
-- Stacks of debris
+WHAT TO DETECT (ONLY these):
+1. COMPRESSED BALES: Rectangular blocks of compressed recyclable materials (paper, plastic, cardboard) - typically stacked in rows
+2. MATERIAL STACKS: Piles of loose or semi-compacted recycling materials (concrete, wood, metal scrap)
+3. CONTAINERS WITH MATERIALS: Bins, dumpsters, or containers that are FILLED with visible recycling materials
+4. DEBRIS PILES: Accumulated piles of construction/demolition debris with visible 3D volume
 
-Exclude:
-- Buildings, roads, vehicles (unless they're part of the recycling operation)
-- Sky, vegetation, empty ground
+WHAT TO ABSOLUTELY EXCLUDE (DO NOT DETECT):
+- FENCES, GATES, CHAIN-LINK BARRIERS (even if they have materials behind them)
+- BUILDINGS, WALLS, STRUCTURES (the facility buildings themselves)
+- ROADS, PAVEMENT, EMPTY GROUND, ASPHALT
+- VEHICLES (trucks, cars, forklifts)
+- SKY, CLOUDS, VEGETATION (trees, bushes, grass)
+- SIGNS, LOGOS, TEXT ON BUILDINGS
+- EMPTY SPACES, SHADOWS, REFLECTIONS
+- ANY FLAT SURFACES (ground, roads, building walls)
+
+BOUNDING BOX REQUIREMENTS:
+- Each bounding box must be a RECTANGLE (not a line or thin strip)
+- Minimum dimensions: width >= 20 pixels AND height >= 20 pixels
+- Maximum dimensions: width <= {w*0.5} pixels AND height <= {h*0.5} pixels (no single pile should be >50% of image)
+- Aspect ratio: width/height must be between 0.2 and 5.0 (not extremely wide or tall)
+- Bounding box must tightly fit around a SINGLE material stack/bale/container
+- DO NOT create horizontal lines across the image
+- DO NOT create boxes that span the entire image width
+
+For EACH valid detection, provide:
+- Bounding box: [x, y, width, height] in pixels (image size: {w}x{h})
+- Volume: estimated cubic meters (m³) - must be > 0 and reasonable (typically 1-500 m³ per pile)
+- Tonnage: estimated tons - must be > 0 and reasonable (typically 0.5-1000 tons per pile)
+- Materials: percentage breakdown (must sum to ~100%)
+- Confidence: 0.0-1.0 (only include if confidence >= 0.6)
+- Description: brief description of what material type (e.g., "compressed paper bales", "wood debris stack", "metal scrap pile")
 
 Return your analysis as a JSON object with this exact structure:
 {{
@@ -223,8 +239,8 @@ Return your analysis as a JSON object with this exact structure:
                 "plastic": percentage,
                 "mixed": percentage
             }},
-            "confidence": 0.0-1.0,
-            "description": "brief description"
+            "confidence": 0.6-1.0,
+            "description": "material type description"
         }}
     ],
     "total_volume_m3": sum of all volumes,
@@ -238,8 +254,7 @@ Return your analysis as a JSON object with this exact structure:
     }}
 }}
 
-Be precise with bounding boxes - they should tightly fit each individual pile/object.
-Use your knowledge of material densities and typical recycling facility operations to estimate volumes and weights.
+IMPORTANT: Only include detections you are confident are actual recycling MATERIALS, not infrastructure. If you're unsure, exclude it. Quality over quantity.
 """
         
         # Call AI API
@@ -440,10 +455,26 @@ Use your knowledge of material densities and typical recycling facility operatio
                         'centroid': (x1 + (x2-x1)//2, y1 + (y2-y1)//2),
                     })
         
-        # Calculate totals
-        total_volume = data.get('total_volume_m3', sum(obj.get('volume_m3', 0) for obj in objects))
-        total_tonnage = data.get('total_tonnage_tons', sum(obj.get('tonnage_tons', 0) for obj in objects))
-        overall_materials = data.get('overall_materials', {})
+        # Calculate totals from validated objects only
+        total_volume = sum(obj.get('volume_m3', 0) for obj in valid_objects)
+        total_tonnage = sum(obj.get('tonnage_tons', 0) for obj in valid_objects)
+        
+        # Calculate overall materials from validated objects
+        overall_materials = {}
+        for obj in valid_objects:
+            materials = obj.get('materials', {})
+            for material, pct in materials.items():
+                if material not in overall_materials:
+                    overall_materials[material] = 0
+                overall_materials[material] += pct
+        
+        # Normalize to percentages
+        total_pct = sum(overall_materials.values())
+        if total_pct > 0:
+            overall_materials = {k: (v / total_pct * 100) for k, v in overall_materials.items()}
+        else:
+            # Fallback to data if calculation fails
+            overall_materials = data.get('overall_materials', {})
         
         # Normalize material percentages
         total_pct = sum(overall_materials.values())
@@ -454,7 +485,7 @@ Use your knowledge of material densities and typical recycling facility operatio
         
         return {
             'method': f'ai_{self.provider}',
-            'objects': objects,
+            'objects': valid_objects,  # Only return validated objects
             'segmentation': {
                 'mask': combined_mask,
                 'masks': [combined_mask],  # Single combined mask for now
@@ -468,7 +499,7 @@ Use your knowledge of material densities and typical recycling facility operatio
             'materials': {
                 'percentages': {k: round(v, 1) for k, v in overall_materials.items()}
             },
-            'ai_response': data,  # Store raw AI response
+            'ai_response': data,  # Store raw AI response for debugging
         }
     
     def _empty_result(self) -> Dict:

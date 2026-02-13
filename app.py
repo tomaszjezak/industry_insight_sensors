@@ -123,37 +123,60 @@ def draw_ai_overlay(image: np.ndarray, analysis_result: dict = None) -> np.ndarr
     if analysis_result and 'ai_objects' in analysis_result:
         # Draw AI-detected objects with bounding boxes
         ai_objects = analysis_result['ai_objects']
+        valid_count = 0
+        
         for idx, obj in enumerate(ai_objects):
             bbox = obj.get('bbox', [])
-            if len(bbox) == 4:
-                x, y, width, height = bbox
-                x1, y1 = int(x), int(y)
-                x2, y2 = int(x + width), int(y + height)
-                x1, y1 = max(0, x1), max(0, y1)
-                x2, y2 = min(w, x2), min(h, y2)
+            if len(bbox) != 4:
+                continue
+            
+            x, y, width, height = bbox
+            x1, y1 = int(x), int(y)
+            x2, y2 = int(x + width), int(y + height)
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            
+            # Additional validation: ensure reasonable dimensions
+            box_width = x2 - x1
+            box_height = y2 - y1
+            
+            if box_width < 20 or box_height < 20:  # Too small
+                continue
+            if box_width > w * 0.5 or box_height > h * 0.5:  # Too large
+                continue
+            
+            # Check aspect ratio (not a line)
+            aspect = box_width / box_height if box_height > 0 else 0
+            if aspect > 10.0 or aspect < 0.1:  # Too wide or too tall
+                continue
+            
+            if x2 > x1 and y2 > y1:
+                valid_count += 1
+                # Draw green bounding box
+                cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 255, 0), 4)
                 
-                if x2 > x1 and y2 > y1:
-                    # Draw green bounding box
-                    cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 255, 0), 4)
-                    
-                    # Add label with AI estimates
-                    volume = obj.get('volume_m3', 0)
-                    tonnage = obj.get('tonnage_tons', 0)
-                    label_text = f"Pile {idx+1}: {tonnage:.1f}t, {volume:.1f}m³"
-                    
-                    # Position label above box
-                    label_y = max(y1 - 10, 20)
-                    (text_width, text_height), baseline = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-                    
-                    # White background
-                    padding = 5
-                    cv2.rectangle(overlay,
-                                 (x1, label_y - text_height - baseline - padding),
-                                 (x1 + text_width + padding, label_y + baseline + padding),
-                                 (255, 255, 255), -1)
-                    # Dark text
-                    cv2.putText(overlay, label_text, (x1 + padding//2, label_y),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+                # Add label with AI estimates
+                volume = obj.get('volume_m3', 0)
+                tonnage = obj.get('tonnage_tons', 0)
+                label_text = f"Pile {valid_count}: {tonnage:.1f}t, {volume:.1f}m³"
+                
+                # Position label above box
+                label_y = max(y1 - 10, 20)
+                (text_width, text_height), baseline = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                
+                # White background
+                padding = 5
+                cv2.rectangle(overlay,
+                             (x1, label_y - text_height - baseline - padding),
+                             (x1 + text_width + padding, label_y + baseline + padding),
+                             (255, 255, 255), -1)
+                # Dark text
+                cv2.putText(overlay, label_text, (x1 + padding//2, label_y),
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+        
+        if valid_count == 0 and len(ai_objects) > 0:
+            # All detections were filtered out
+            print("[!] All AI detections were filtered out as invalid")
     
     # Also draw segmentation outlines if available (for fallback or combined view)
     elif analysis_result and 'segmentation' in analysis_result:
